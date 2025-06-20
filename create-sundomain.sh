@@ -58,7 +58,7 @@ fi
 # Ingreso del dominio con confirmación
 divider
 while true; do
-    read -p $'\e[1;94m🌐 Ingrese el dominio de origen (ej: cloud2.abysscore.xyz): \e[0m' ORIGIN_DOMAIN
+    read -p $'\e[1;94m🌐 Ingrese el dominio de origen (ej: tu.dominio.com): \e[0m' ORIGIN_DOMAIN
     echo -e "${YELLOW}⚠️ Está a punto de usar el dominio: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
     read -p $'\e[1;93m➡️ ¿Confirmar dominio? (s/n): \e[0m' CONFIRMAR
     case "${CONFIRMAR,,}" in
@@ -69,7 +69,7 @@ while true; do
 done
 
 # Descripción de la distribución
-read -p $'\e[1;95m📝 Ingrese una descripción para la distribución (ej: Domain_5): \e[0m' DESCRIPTION
+read -p $'\e[1;95m📝 Ingrese una descripción para la distribución (ej: Domain_1): \e[0m' DESCRIPTION
 
 # Generar referencia única
 REFERENCE="cf-ui-$(date +%s)"
@@ -148,3 +148,8 @@ rm -f config_cloudfront.json salida_cloudfront.json error.log
 # Autodestrucción del script (opcional)
 # echo -e "${RED}🧨 Eliminando el script: ${BOLD}$0${RESET}"
 rm -- "$0"
+
+# Créditos
+divider
+echo -e "${MAGENTA}🙌 Gracias por usar este asistente.${RESET}"
+echo -e "${BOLD}${CYAN}🔧 Créditos a 👾 Leo Duarte${RESET}"
