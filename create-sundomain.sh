@@ -27,20 +27,26 @@ if ! command -v aws &> /dev/null; then
     echo -e "${RED}❌ AWS CLI no está instalado. Instalando...${RESET}"
     sudo apt update -qq && sudo apt install -y awscli
 else
-    echo -e "${GREEN}✔️ AWS CLI está instalado con éxito.${RESET}"
+    echo -e "${GREEN}✔️ AWS CLI está instalado.${RESET}"
 fi
 
 # Verificar credenciales AWS configuradas o en variables de entorno
-if [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" && -n "$AWS_DEFAULT_REGION" ]]; then
-    echo -e "${GREEN}✔️ Credenciales AWS encontradas en variables de entorno.${RESET}"
-    aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
-    aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
-    aws configure set region "$AWS_DEFAULT_REGION"
-elif [[ -z "$(aws configure get aws_access_key_id)" ]]; then
-    echo -e "${YELLOW}⚠️ No se encontraron credenciales. Ejecutando 'aws configure'...${RESET}"
-    aws configure
+# Verificar si las credenciales están activas haciendo una llamada real
+divider
+echo -e "${BOLD}${CYAN}🔐 Verificando credenciales de AWS...${RESET}"
+divider
+
+if aws sts get-caller-identity --output json > /dev/null 2>&1; then
+    echo -e "${GREEN}✔️ Credenciales de AWS válidas detectadas.${RESET}"
 else
-    echo -e "${GREEN}✔️ Credenciales de AWS detectadas en configuración.${RESET}"
+    echo -e "${YELLOW}⚠️ No se detectaron credenciales válidas. Ejecutando 'aws configure'...${RESET}"
+    aws configure
+    if aws sts get-caller-identity --output json > /dev/null 2>&1; then
+        echo -e "${GREEN}✔️ Credenciales configuradas exitosamente.${RESET}"
+    else
+        echo -e "${RED}❌ No se pudieron configurar las credenciales. Abortando...${RESET}"
+        exit 1
+    fi
 fi
 
 # Verificar que jq esté instalado (lo usaremos para parsear JSON)
