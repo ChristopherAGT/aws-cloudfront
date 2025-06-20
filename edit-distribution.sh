@@ -67,7 +67,7 @@ for ((i = 0; i < COUNT; i++)); do
 
     # 🔲 Imprimir alineado
     printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
-    printf "%-8s ${CYAN}║${RESET}\n" "$STATE"
+    printf "%-18s ${CYAN}║${RESET}\n" "$STATE"
     #echo -e "$STATE${CYAN}  ║${RESET}"
 done
 
