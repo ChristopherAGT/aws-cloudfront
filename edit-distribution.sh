@@ -73,7 +73,7 @@ fi
 
 # 📏 Calcular espacios para que la columna tenga 9 caracteres visibles
 STATE_LEN=${#STATE_RAW}
-PADDING=$((9 - STATE_LEN))
+PADDING=$((8 - STATE_LEN))
 SPACES=$(printf '%*s' "$PADDING" '')
 
 # 🔲 Imprimir fila alineada
