@@ -1,6 +1,6 @@
 #!/bin/bash
 
-clear
+clear  # Limpia pantalla al inicio
 
 # ╔══════════════════════════════════════════════════════════╗
 # ║       ✏️ EDITOR DE DOMINIOS DE ORIGEN - CLOUDFRONT       ║
@@ -50,9 +50,8 @@ printf "${BOLD}${CYAN}%-4s│ %-22s│ %-30s│ %-20s│ %-20s${RESET}\n" \
   " Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Creación"
 printf "${CYAN}────┼────────────────────────┼────────────────────────────────┼──────────────────────┼────────────────────────────${RESET}\n"
 
-# Almacenar IDs y Configurations
+# Almacenar IDs
 declare -a IDS
-declare -a CONFIGS
 
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
@@ -86,14 +85,43 @@ CONFIG=$(jq '.DistributionConfig' config_original.json)
 ORIGIN_ACTUAL=$(echo "$CONFIG" | jq -r '.Origins.Items[0].DomainName')
 echo -e "${YELLOW}🌐 Dominio de origen actual: ${BOLD}${ORIGIN_ACTUAL}${RESET}"
 
-# Solicitar nuevo origen
-read -p $'\e[1;96m✏️ Ingrese el nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
-NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | xargs | tr '[:upper:]' '[:lower:]')
+# Función para validar dominio
+validar_dominio() {
+    local domain="$1"
 
-if [[ -z "$NUEVO_ORIGEN" ]]; then
-    echo -e "${RED}❌ No puede dejar el campo vacío.${RESET}"
-    exit 1
-fi
+    # Convertir a minúsculas y quitar espacios
+    domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | xargs)
+
+    # Validaciones
+    if [[ -z "$domain" ]]; then
+        echo "El dominio no puede estar vacío."
+        return 1
+    fi
+
+    if [[ "$domain" == http://* || "$domain" == https://* ]]; then
+        echo "No incluya 'http://' ni 'https://' en el dominio."
+        return 1
+    fi
+
+    if ! [[ "$domain" =~ ^[a-z0-9.-]+$ ]]; then
+        echo "Dominio inválido. Solo se permiten letras minúsculas, números, guiones y puntos."
+        return 1
+    fi
+
+    return 0
+}
+
+# Solicitar nuevo dominio con validación
+while true; do
+    read -p $'\e[1;96m✏️ Ingrese el nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
+
+    if validar_dominio "$NUEVO_ORIGEN"; then
+        NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
+        break
+    else
+        echo -e "${RED}❌ Por favor, ingrese un dominio válido.${RESET}"
+    fi
+done
 
 # Confirmar
 echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN}${RESET}"
@@ -121,3 +149,6 @@ rm -f config_original.json nueva_config.json
 
 divider
 echo -e "${MAGENTA}🧼 Gracias por usar el editor de orígenes.${RESET}"
+
+# Eliminar este script
+rm -- "$0"
