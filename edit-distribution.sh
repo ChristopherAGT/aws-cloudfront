@@ -46,9 +46,9 @@ if [ "$COUNT" -eq 0 ]; then
 fi
 
 # Imprimir cabecera de tabla
-printf "${BOLD}${CYAN}%-4s│ %-22s│ %-30s│ %-20s│ %-10s${RESET}\n" \
+printf "${BOLD}${CYAN}%-4s│ %-25s│ %-32s│ %-20s│ %-9s${RESET}\n" \
   " Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
-printf "${CYAN}────┼────────────────────────┼────────────────────────────────┼──────────────────────┼────────────${RESET}\n"
+printf "${CYAN}────┼─────────────────────────────┼──────────────────────────────────┼──────────────────────┼───────────${RESET}\n"
 
 # Almacenar IDs
 declare -a IDS
@@ -62,23 +62,28 @@ for ((i = 0; i < COUNT; i++)); do
     DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
-    STATUS="${GREEN}Enabled${RESET}"
-    if [[ "$ENABLED" != "true" ]]; then
+    if [[ "$ENABLED" == "true" ]]; then
+        STATUS="${GREEN}Enabled${RESET}"
+    else
         STATUS="${RED}Disabled${RESET}"
     fi
 
-    printf "%-4s│ %-22s│ %-30s│ %-20s│ %-10b\n" \
+    printf "%-4s│ %-25s│ %-32s│ %-20s│ %-9b\n" \
       "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$STATUS"
 done
 
+#Seleccion de distribución
 echo ""
-read -p $'\e[1;93m🔢 Seleccione el número de la distribución que desea editar: \e[0m' SELECCION
-INDEX=$((SELECCION - 1))
+while true; do
+    read -p $'\e[1;93m🔢 Seleccione el número de la distribución que desea editar: \e[0m' SELECCION
+    INDEX=$((SELECCION - 1))
 
-if ! [[ "$SELECCION" =~ ^[0-9]+$ ]] || [ "$INDEX" -lt 0 ] || [ "$INDEX" -ge "$COUNT" ]; then
-    echo -e "${RED}❌ Número inválido.${RESET}"
-    exit 1
-fi
+    if [[ "$SELECCION" =~ ^[0-9]+$ ]] && [ "$INDEX" -ge 0 ] && [ "$INDEX" -lt "$COUNT" ]; then
+        break
+    else
+        echo -e "${RED}❌ Seleccione una distribución válida.${RESET}"
+    fi
+done
 
 ID="${IDS[$INDEX]}"
 
