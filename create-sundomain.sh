@@ -124,9 +124,6 @@ cat > config_cloudfront.json <<EOF
         "Forward": "none"
       }
     },
-    "MinTTL": 0,
-    "DefaultTTL": 86400,
-    "MaxTTL": 31536000,
     "Compress": false,
     "CachePolicyId": "413f15d4-64f1-4f3f-b225-3e1f5c3bdf3b",
     "OriginRequestPolicyId": "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"
