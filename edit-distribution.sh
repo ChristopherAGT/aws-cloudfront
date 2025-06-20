@@ -62,13 +62,23 @@ for ((i = 0; i < COUNT; i++)); do
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
-    # 🟢 Colorear solo el estado (fuera del printf)
-    STATE=$( [[ "$ENABLED" == "true" ]] && echo -e "${GREEN}Enabled${RESET}" || echo -e "${RED}Disabled${RESET}" )
+    # 🟢 Preparar estado con color y sin color
+if [[ "$ENABLED" == "true" ]]; then
+    STATE_RAW="Enabled"
+    STATE_COLOR="${GREEN}Enabled${RESET}"
+else
+    STATE_RAW="Disabled"
+    STATE_COLOR="${RED}Disabled${RESET}"
+fi
 
-    # 🔲 Imprimir alineado
-    printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
-    printf "%-18s ${CYAN}║${RESET}\n" "$STATE"
-    #echo -e "$STATE${CYAN}  ║${RESET}"
+# 📏 Calcular espacios para que la columna tenga 9 caracteres visibles
+STATE_LEN=${#STATE_RAW}
+PADDING=$((9 - STATE_LEN))
+SPACES=$(printf '%*s' "$PADDING" '')
+
+# 🔲 Imprimir fila alineada
+printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
+echo -e "$STATE_COLOR$SPACES${CYAN} ║${RESET}"
 done
 
 # 🔚 Pie de la tabla
