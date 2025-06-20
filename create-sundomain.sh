@@ -27,7 +27,7 @@ if ! command -v aws &> /dev/null; then
     echo -e "${RED}❌ AWS CLI no está instalado. Instalando...${RESET}"
     sudo apt update -qq && sudo apt install -y awscli
 else
-    echo -e "${GREEN}✔️ AWS CLI está instalado XD.${RESET}"
+    echo -e "${GREEN}✔️ AWS CLI está instalado.${RESET}"
 fi
 
 # Verificar credenciales AWS configuradas o en variables de entorno
@@ -119,7 +119,7 @@ cat > config_cloudfront.json <<EOF
       }
     },
     "Compress": false,
-    "CachePolicyId": "413f15d4-64f1-4f3f-b225-3e1f5c3bdf3b",
+    "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
     "OriginRequestPolicyId": "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"
   }
 }
