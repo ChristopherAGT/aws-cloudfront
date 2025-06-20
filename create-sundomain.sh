@@ -88,7 +88,12 @@ while true; do
 done
 
 # Descripción de la distribución (puedes dejarlo igual o agregar validación)
-read -p $'\e[1;95m📝 Ingrese una descripción para la distribución (ej: Domain_1): \e[0m' DESCRIPTION
+read -p $'\e[1;95m📝 Ingrese una descripción para la distribución [Default: Domain_1]: \e[0m' DESCRIPTION
+DESCRIPTION=$(echo "$DESCRIPTION" | xargs)  # quita espacios
+
+if [[ -z "$DESCRIPTION" ]]; then
+    DESCRIPTION="Domain_1"
+fi
 
 # Generar referencia única
 REFERENCE="cf-ui-$(date +%s)"
