@@ -132,7 +132,7 @@ validar_dominio() {
 
 # Solicitar nuevo dominio con validación
 while true; do
-    read -p $'\e[1;96m✏️ Ingrese el nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
+    read -p $'\e[1;96m✏️ Ingrese su nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
     if validar_dominio "$NUEVO_ORIGEN"; then
         NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
         break
