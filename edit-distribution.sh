@@ -45,12 +45,15 @@ if [ "$COUNT" -eq 0 ]; then
     exit 0
 fi
 
-# Encabezado
-printf "${CYAN}${BOLD}%-3s │ %-25s │ %-32s │ %-20s │ %-8s${RESET}\n" \
+# Cabecera (sin colores dentro del printf)
+echo -e "${CYAN}${BOLD}"
+printf "%-3s │ %-25s │ %-32s │ %-20s │ %-8s\n" \
   "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
-printf "${CYAN}────┼─────────────────────────┼──────────────────────────────────┼──────────────────────┼──────────${RESET}\n"
+echo -e "${RESET}${CYAN}"
+printf "────┼─────────────────────────┼──────────────────────────────────┼──────────────────────┼──────────\n"
+echo -e "${RESET}"
 
-# Filas
+# Mostrar filas alineadas
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
     IDS[$i]="$ID"
@@ -60,14 +63,16 @@ for ((i = 0; i < COUNT; i++)); do
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
+    # Estado con color (se aplica después, no dentro del printf)
     if [[ "$ENABLED" == "true" ]]; then
-        STATUS="${GREEN}Enabled${RESET}"
+        STATE="${GREEN}Enabled${RESET}"
     else
-        STATUS="${RED}Disabled${RESET}"
+        STATE="${RED}Disabled${RESET}"
     fi
 
-    printf "%-3s │ %-25s │ %-32s │ %-20s │ %s\n" \
-      "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$STATUS"
+    # Print alineado sin códigos de color dentro del printf
+    printf "%-3s │ %-25s │ %-32s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
+    echo -e "$STATE"
 done
 
 #Seleccion de distribución
