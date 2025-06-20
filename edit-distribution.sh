@@ -77,7 +77,7 @@ echo -e "${BOLD}${CYAN}╚══════════════════
 #Seleccion de distribución
 echo ""
 while true; do
-    read -p $'\e[1;93m🔢 Seleccione el número de la distribución que desea editar: \e[0m' SELECCION
+    read -p $'\e[1;93m🔢 Seleccione la distribución que desea editar: \e[0m' SELECCION
     INDEX=$((SELECCION - 1))
 
     if [[ "$SELECCION" =~ ^[0-9]+$ ]] && [ "$INDEX" -ge 0 ] && [ "$INDEX" -lt "$COUNT" ]; then
