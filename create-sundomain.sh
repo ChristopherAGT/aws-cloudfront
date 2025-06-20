@@ -14,7 +14,6 @@ CYAN='\e[1;96m'
 BOLD='\e[1m'
 RESET='\e[0m'
 
-# Línea decorativa
 divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
@@ -26,17 +25,28 @@ divider
 
 if ! command -v aws &> /dev/null; then
     echo -e "${RED}❌ AWS CLI no está instalado. Instalando...${RESET}"
-    sudo apt update -qq && sudo apt install awscli -y
+    sudo apt update -qq && sudo apt install -y awscli
 else
     echo -e "${GREEN}✔️ AWS CLI está instalado.${RESET}"
 fi
 
-# Verificar si hay credenciales
-if [[ -z "$(aws configure get aws_access_key_id)" ]]; then
+# Verificar credenciales AWS configuradas o en variables de entorno
+if [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" && -n "$AWS_DEFAULT_REGION" ]]; then
+    echo -e "${GREEN}✔️ Credenciales AWS encontradas en variables de entorno.${RESET}"
+    aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+    aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+    aws configure set region "$AWS_DEFAULT_REGION"
+elif [[ -z "$(aws configure get aws_access_key_id)" ]]; then
     echo -e "${YELLOW}⚠️ No se encontraron credenciales. Ejecutando 'aws configure'...${RESET}"
     aws configure
 else
-    echo -e "${GREEN}✔️ Credenciales de AWS detectadas.${RESET}"
+    echo -e "${GREEN}✔️ Credenciales de AWS detectadas en configuración.${RESET}"
+fi
+
+# Verificar que jq esté instalado (lo usaremos para parsear JSON)
+if ! command -v jq &> /dev/null; then
+    echo -e "${YELLOW}⚠️ jq no está instalado. Instalando jq...${RESET}"
+    sudo apt update -qq && sudo apt install -y jq
 fi
 
 # Ingreso del dominio con confirmación
@@ -124,24 +134,20 @@ echo -e "${GREEN}✔️ Archivo config_cloudfront.json creado.${RESET}"
 divider
 echo -e "${BOLD}${CYAN}🚀 Enviando configuración a CloudFront...${RESET}"
 
-aws cloudfront create-distribution \
-    --distribution-config file://config_cloudfront.json \
-    > salida_cloudfront.json 2>/dev/null
-
-# Mostrar resultado
-if [[ $? -eq 0 ]]; then
+if aws cloudfront create-distribution --distribution-config file://config_cloudfront.json > salida_cloudfront.json 2>error.log; then
     DOMAIN=$(jq -r '.Distribution.DomainName' salida_cloudfront.json)
-    echo -e "${GREEN}✔️ Distribución creada exitosamente.${RESET}"
+    echo -e "${GREEN}✅️ Distribución creada exitosamente.${RESET}"
     echo -e "${MAGENTA}🌍 URL de acceso: ${BOLD}https://${DOMAIN}${RESET}"
 else
-    echo -e "${RED}❌ Ocurrió un error al crear la distribución.${RESET}"
+    echo -e "${RED}❌ Ocurrió un error al crear la distribución. Revise error.log para más detalles.${RESET}"
+    cat error.log
 fi
 
 # Limpieza final
 divider
 echo -e "${BLUE}🧹 Limpiando archivos temporales...${RESET}"
-rm -f config_cloudfront.json salida_cloudfront.json
+rm -f config_cloudfront.json salida_cloudfront.json error.log
 
-# Autodestrucción del script
-echo -e "${RED}🧨 Eliminando el script: ${BOLD}$0${RESET}"
+# Autodestrucción del script (opcional)
+# echo -e "${RED}🧨 Eliminando el script: ${BOLD}$0${RESET}"
 rm -- "$0"
