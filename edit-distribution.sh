@@ -45,21 +45,19 @@ if [ "$COUNT" -eq 0 ]; then
     exit 0
 fi
 
-# Imprimir cabecera de tabla
-printf "${BOLD}${CYAN}%-4s│ %-25s│ %-32s│ %-20s│ %-9s${RESET}\n" \
-  " Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
-printf "${CYAN}────┼─────────────────────────────┼──────────────────────────────────┼──────────────────────┼───────────${RESET}\n"
+# Encabezado
+printf "${CYAN}${BOLD}%-3s │ %-25s │ %-32s │ %-20s │ %-8s${RESET}\n" \
+  "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
+printf "${CYAN}────┼─────────────────────────┼──────────────────────────────────┼──────────────────────┼──────────${RESET}\n"
 
-# Almacenar IDs
-declare -a IDS
-
+# Filas
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
     IDS[$i]="$ID"
 
     ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
-    COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
+    COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
     if [[ "$ENABLED" == "true" ]]; then
@@ -68,7 +66,7 @@ for ((i = 0; i < COUNT; i++)); do
         STATUS="${RED}Disabled${RESET}"
     fi
 
-    printf "%-4s│ %-25s│ %-32s│ %-20s│ %-9b\n" \
+    printf "%-3s │ %-25s │ %-32s │ %-20s │ %s\n" \
       "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$STATUS"
 done
 
