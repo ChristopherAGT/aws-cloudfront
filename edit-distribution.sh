@@ -45,15 +45,14 @@ if [ "$COUNT" -eq 0 ]; then
     exit 0
 fi
 
-# Cabecera (sin colores dentro del printf)
-echo -e "${CYAN}${BOLD}"
-printf "%-3s │ %-25s │ %-32s │ %-20s │ %-8s\n" \
+# 📋 Cabecera de tabla
+echo ""
+echo -e "${BOLD}${CYAN}╔════╤══════════════════════════════════╤══════════════════════════════════════════════╤══════════════════════╤════════════╗${RESET}"
+printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-20s │ %-10s ║${RESET}\n" \
   "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
-echo -e "${RESET}${CYAN}"
-printf "────┼─────────────────────────┼──────────────────────────────────┼──────────────────────┼──────────\n"
-echo -e "${RESET}"
+echo -e "${BOLD}${CYAN}╟────┼──────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────┼────────────╢${RESET}"
 
-# Mostrar filas alineadas
+# 📄 Mostrar las filas de la tabla
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
     IDS[$i]="$ID"
@@ -63,17 +62,16 @@ for ((i = 0; i < COUNT; i++)); do
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
-    # Estado con color (se aplica después, no dentro del printf)
-    if [[ "$ENABLED" == "true" ]]; then
-        STATE="${GREEN}Enabled${RESET}"
-    else
-        STATE="${RED}Disabled${RESET}"
-    fi
+    # 🟢 Colorear solo el estado (fuera del printf)
+    STATE=$( [[ "$ENABLED" == "true" ]] && echo -e "${GREEN}Enabled${RESET}" || echo -e "${RED}Disabled${RESET}" )
 
-    # Print alineado sin códigos de color dentro del printf
-    printf "%-3s │ %-25s │ %-32s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
-    echo -e "$STATE"
+    # 🔲 Imprimir alineado
+    printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
+    echo -e "$STATE${CYAN} ║${RESET}"
 done
+
+# 🔚 Pie de la tabla
+echo -e "${BOLD}${CYAN}╚════╧══════════════════════════════════╧══════════════════════════════════════════════╧══════════════════════╧════════════╝${RESET}"
 
 #Seleccion de distribución
 echo ""
