@@ -55,10 +55,29 @@ if ! command -v jq &> /dev/null; then
     sudo apt update -qq && sudo apt install -y jq
 fi
 
-# Ingreso del dominio con confirmación
+# Ingreso del dominio con validación y confirmación
 divider
 while true; do
-    read -p $'\e[1;94m🌐 Ingrese el dominio de origen (ej: tu.dominio.com): \e[0m' ORIGIN_DOMAIN
+    read -p $'\e[1;94m🌐 Ingrese el dominio de origen (ej: tu.dominio.com): \e[0m' ORIGIN_DOMAIN_RAW
+    # Convertir a minúsculas y quitar espacios alrededor
+    ORIGIN_DOMAIN=$(echo "$ORIGIN_DOMAIN_RAW" | tr '[:upper:]' '[:lower:]' | xargs)
+
+    # Validaciones
+    if [[ -z "$ORIGIN_DOMAIN" ]]; then
+        echo -e "${RED}❌ El dominio no puede estar vacío. Intente de nuevo.${RESET}"
+        continue
+    fi
+
+    if [[ "$ORIGIN_DOMAIN" == http://* || "$ORIGIN_DOMAIN" == https://* ]]; then
+        echo -e "${RED}❌ No incluya 'http://' ni 'https://' en el dominio. Solo el nombre de dominio.${RESET}"
+        continue
+    fi
+
+    if ! [[ "$ORIGIN_DOMAIN" =~ ^[a-z0-9.-]+$ ]]; then
+        echo -e "${RED}❌ Dominio inválido. Solo se permiten letras minúsculas, números, guiones y puntos.${RESET}"
+        continue
+    fi
+
     echo -e "${YELLOW}⚠️ Está a punto de usar el dominio: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
     read -p $'\e[1;93m➡️ ¿Confirmar dominio? (s/n): \e[0m' CONFIRMAR
     case "${CONFIRMAR,,}" in
@@ -68,7 +87,7 @@ while true; do
     esac
 done
 
-# Descripción de la distribución
+# Descripción de la distribución (puedes dejarlo igual o agregar validación)
 read -p $'\e[1;95m📝 Ingrese una descripción para la distribución (ej: Domain_1): \e[0m' DESCRIPTION
 
 # Generar referencia única
@@ -140,10 +159,12 @@ else
     cat error.log
 fi
 
-# Limpieza final
+# Limpieza final segura
 divider
 echo -e "${BLUE}🧹 Limpiando archivos temporales...${RESET}"
-rm -f config_cloudfront.json salida_cloudfront.json error.log
+for f in config_cloudfront.json salida_cloudfront.json error.log; do
+  if [ -f "$f" ]; then rm -f "$f"; fi
+done
 
 # Autodestrucción del script (opcional)
 # echo -e "${RED}🧨 Eliminando el script: ${BOLD}$0${RESET}"
