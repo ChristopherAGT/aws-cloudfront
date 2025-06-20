@@ -22,7 +22,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       ✏️ EDITOR DE DOMINIOS DE ORIGEN - CLOUDFRONT       ║"
+echo "║       ✏️ EDITOR DE DOMINIOS DE ORIGEN - CLOUDFRONT                  ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -46,9 +46,9 @@ if [ "$COUNT" -eq 0 ]; then
 fi
 
 # Imprimir cabecera de tabla
-printf "${BOLD}${CYAN}%-4s│ %-22s│ %-30s│ %-20s│ %-20s${RESET}\n" \
-  " Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Creación"
-printf "${CYAN}────┼────────────────────────┼────────────────────────────────┼──────────────────────┼────────────────────────────${RESET}\n"
+printf "${BOLD}${CYAN}%-4s│ %-22s│ %-30s│ %-20s│ %-10s${RESET}\n" \
+  " Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
+printf "${CYAN}────┼────────────────────────┼────────────────────────────────┼──────────────────────┼────────────${RESET}\n"
 
 # Almacenar IDs
 declare -a IDS
@@ -60,10 +60,15 @@ for ((i = 0; i < COUNT; i++)); do
     ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
-    CREATED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].LastModifiedTime")
+    ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
-    printf "%-4s│ %-22s│ %-30s│ %-20s│ %-20s\n" \
-      "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$CREATED"
+    STATUS="${GREEN}Enabled${RESET}"
+    if [[ "$ENABLED" != "true" ]]; then
+        STATUS="${RED}Disabled${RESET}"
+    fi
+
+    printf "%-4s│ %-22s│ %-30s│ %-20s│ %-10b\n" \
+      "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$STATUS"
 done
 
 echo ""
@@ -88,11 +93,8 @@ echo -e "${YELLOW}🌐 Dominio de origen actual: ${BOLD}${ORIGIN_ACTUAL}${RESET}
 # Función para validar dominio
 validar_dominio() {
     local domain="$1"
-
-    # Convertir a minúsculas y quitar espacios
     domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | xargs)
 
-    # Validaciones
     if [[ -z "$domain" ]]; then
         echo "El dominio no puede estar vacío."
         return 1
@@ -114,7 +116,6 @@ validar_dominio() {
 # Solicitar nuevo dominio con validación
 while true; do
     read -p $'\e[1;96m✏️ Ingrese el nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
-
     if validar_dominio "$NUEVO_ORIGEN"; then
         NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
         break
