@@ -50,7 +50,8 @@ menu() {
     echo -e "${YELLOW}3.${RESET} ⚙️ Editar distribución"
     echo -e "${YELLOW}4.${RESET} 🔁 Activar/Desactivar distribución"
     echo -e "${YELLOW}5.${RESET} 🗑️ Eliminar distribución"
-    echo -e "${YELLOW}6.${RESET} 🚪 Salir"
+    echo -e "${YELLOW}6.${RESET} 🧹 Remover el panel"
+    echo -e "${YELLOW}7.${RESET} 🚪 Salir"
     divider
 }
 
@@ -78,9 +79,16 @@ ejecutar_script() {
     fi
 }
 
+remover_panel() {
+    echo -e "${YELLOW}🧹 Removiendo archivos instalados...${RESET}"
+    rm -f "$HOME/.aws-manager.sh"
+    rm -f "$HOME/.local/bin/aws-manager"
+    echo -e "${GREEN}✅ Archivos eliminados correctamente.${RESET}"
+}
+
 while true; do
     menu
-    read -rp $'\e[1;93m🔢 Ingrese opción (1-6): \e[0m' opcion
+    read -rp $'\e[1;93m🔢 Ingrese opción (1-7): \e[0m' opcion
 
     case "$opcion" in
         1)
@@ -109,13 +117,17 @@ while true; do
             pause
             ;;
         6)
+            remover_panel
+            #pause
+            ;;
+        7)
             echo -e "${MAGENTA}👋 Saliendo del panel...${RESET}"
             echo -e "${CYAN}💡 Puedes ejecutar nuevamente el panel con el comando: ${BOLD}aws-manager${RESET}"
             echo -e "${GREEN}📝 Créditos a 👾 Christopher Ackerman${RESET}"
             exit 0
             ;;
         *)
-            echo -e "${RED}❌ Opción inválida. Por favor ingresa un número entre 1 y 6.${RESET}"
+            echo -e "${RED}❌ Opción inválida. Por favor ingresa un número entre 1 y 7.${RESET}"
             pause
             ;;
     esac
