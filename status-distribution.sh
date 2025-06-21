@@ -39,26 +39,21 @@ divider
 # 📥 Ejecutar comando AWS con manejo de errores
 RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
 
-# ❌ Validar si hubo un error al ejecutar el comando
+# ❌ Validar si hubo un error real al ejecutar el comando
 if [[ $? -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
     echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica conexión, credenciales o permisos.${RESET}"
     exit 1
 fi
 
-# 📊 Obtener longitud del array real
-COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length')
-
-# ❌ Validar si no es un número válido
-if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
-    echo -e "${RED}❌ Error al interpretar la lista de distribuciones.${RESET}"
-    exit 1
-fi
-
-# ⚠️ Si no hay distribuciones, mensaje amigable
-if [[ "$COUNT" -eq 0 ]]; then
+# 🧪 Validar si el campo Items existe (si no, no hay distribuciones)
+HAS_ITEMS=$(echo "$RAW_OUTPUT" | jq -e '.DistributionList | has("Items")' 2>/dev/null)
+if [[ "$HAS_ITEMS" != "true" ]]; then
     echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
+
+# 📊 Obtener cantidad de distribuciones
+COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length')
 
 DISTROS="$RAW_OUTPUT"
 
