@@ -21,7 +21,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT                      ║"
+echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT           ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -39,28 +39,27 @@ divider
 # 📥 Obtener lista completa con manejo de errores
 RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
 
-# ❌ Validar si hubo un fallo real al ejecutar AWS
+# ❌ Validar si hubo error real al obtener datos
 if [[ $? -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
     echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica tu conexión, credenciales o permisos de AWS.${RESET}"
     exit 1
 fi
 
-# 📊 Obtener la cantidad segura de distribuciones
-COUNT=$(echo "$RAW_OUTPUT" | jq -r '.DistributionList.Quantity')
+# 📊 Obtener la cantidad de distribuciones
+COUNT=$(echo "$RAW_OUTPUT" | jq -r '.DistributionList.Quantity // 0')
 
-# ✅ Si el campo no es un número válido, error
+# Verificación estricta del valor numérico
 if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
     echo -e "${RED}❌ Error al interpretar la cantidad de distribuciones.${RESET}"
     exit 1
 fi
 
-# ⚠️ Si simplemente no hay distribuciones, mensaje amable
+# ⚠️ No hay distribuciones
 if [ "$COUNT" -eq 0 ]; then
     echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
 
-# ✅ Si hay distribuciones, continuar normalmente
 DISTROS="$RAW_OUTPUT"
 
 # 📋 Cabecera de tabla
@@ -72,11 +71,11 @@ echo -e "${BOLD}${CYAN}╟──────────────────
 
 # 📄 Mostrar las filas de la tabla
 for ((i = 0; i < COUNT; i++)); do
-    ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
-    ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
-    DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
-    COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
-    ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
+    ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id // \"\"")
+    ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName // \"-\"")
+    DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName // \"-\"")
+    COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment // \"Sin descripción\"")
+    ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled // false")
 
     # Preparar estado con color
     if [[ "$ENABLED" == "true" ]]; then
