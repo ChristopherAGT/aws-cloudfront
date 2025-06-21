@@ -34,9 +34,9 @@ divider() {
 
 menu_header() {
     echo -e "${CYAN}"
-    echo "╔═════════════════════════════════════════════╗"
-    echo "║        🛠️ AWS CLOUDFRONT MANAGER - PANEL        ║"
-    echo "╚═════════════════════════════════════════════╝"
+    echo "╔════════════════════════════════════════════╗"
+    echo "║         🛠️ AWS CLOUDFRONT MANAGER - PANEL          ║"
+    echo "╚════════════════════════════════════════════╝"
     divider
 }
 
