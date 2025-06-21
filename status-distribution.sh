@@ -21,7 +21,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT                     ║"
+echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT2                     ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
