@@ -152,9 +152,12 @@ done
 
 # 🔁 Bucle principal: pedir dominio y confirmar
 while true; do
-    # Obtener IP del dominio
+    # 🌐 Resolver IP del dominio nuevo
     IP_DOMINIO_NEW=$(getent hosts "$NUEVO_ORIGEN" | awk '{ print $1 }' | head -n 1)
-[[ -z "$IP_DOMINIO_NEW" ]] && IP_DOMINIO_NEW="IP no encontrada"
+    if [[ -z "$IP_DOMINIO_NEW" ]] && command -v dig &>/dev/null; then
+        IP_DOMINIO_NEW=$(dig +short "$NUEVO_ORIGEN" | head -n 1)
+    fi
+    [[ -z "$IP_DOMINIO_NEW" ]] && IP_DOMINIO_NEW="IP no encontrada"
 
     echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN} (${IP_DOMINIO_NEW})${RESET}"
 
@@ -163,16 +166,23 @@ while true; do
 
     if [[ "$CONFIRMAR" == "s" ]]; then
         echo -e "${BLUE}🔧 Actualizando configuración...${RESET}"
-        # Aquí se realizaría la actualización con jq, por ejemplo:
+
         jq --arg newdomain "$NUEVO_ORIGEN" \
-           '.Origins.Items[0].DomainName = $newdomain' \
-           <<< "$CONFIG" > nueva_config.json
-        break  # ✅ Sale del bucle, todo correcto
+            '.Origins.Items[0].DomainName = $newdomain' \
+            <<< "$CONFIG" > nueva_config.json
+
+        aws cloudfront update-distribution \
+            --id "$ID" \
+            --if-match "$ETAG" \
+            --distribution-config file://nueva_config.json > /dev/null
+
+        echo -e "${GREEN}✅ Dominio de origen actualizado correctamente.${RESET}"
+        break  # ✅ Salir del bucle tras actualizar
 
     elif [[ "$CONFIRMAR" == "n" ]]; then
         echo -e "${RED}🔁 Se repetirá la edición del dominio de origen.${RESET}"
         
-        # Volver a pedir el nuevo dominio
+        # Volver a pedir el nuevo dominio con validación
         while true; do
             read -p $'\e[1;96m✏️ Ingrese su nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
             NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
@@ -188,25 +198,11 @@ while true; do
     fi
 done
 
-    jq --arg newdomain "$NUEVO_ORIGEN" \
-        '.Origins.Items[0].DomainName = $newdomain' \
-        <<< "$CONFIG" > nueva_config.json
-
-    aws cloudfront update-distribution \
-        --id "$ID" \
-        --if-match "$ETAG" \
-        --distribution-config file://nueva_config.json > /dev/null
-
-    echo -e "${GREEN}✅ Dominio de origen actualizado correctamente.${RESET}"
-else
-    echo -e "${BLUE}🔁 Operación cancelada.${RESET}"
-fi
-
-# Limpieza
+# 🧹 Limpieza final
 rm -f config_original.json nueva_config.json
 
 divider
 echo -e "${MAGENTA}🧼 Gracias por usar el editor de orígenes.${RESET}"
 
-# Eliminar este script
+# 🗑️ Eliminar este script
 rm -- "$0"
