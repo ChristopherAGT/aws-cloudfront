@@ -37,11 +37,21 @@ divider
 echo -e "${BOLD}${CYAN}🔍 Buscando distribuciones activas...${RESET}"
 divider
 
-DISTROS=$(aws cloudfront list-distributions --output json)
+# 📥 Obtener lista de distribuciones con manejo de errores
+DISTROS=$(aws cloudfront list-distributions --output json 2>/dev/null)
+
+# 🔍 Validar si ocurrió un error al obtener las distribuciones
+if [[ -z "$DISTROS" || "$DISTROS" == "null" ]]; then
+    echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifique su conexión, credenciales o permisos de AWS.${RESET}"
+    exit 1
+fi
+
+# 📊 Contar las distribuciones activas
 COUNT=$(echo "$DISTROS" | jq '.DistributionList.Items | length')
 
-if [[ -z "$COUNT" || "$COUNT" -eq 0 ]]; then
-    echo -e "${YELLOW}⚠️ No se encontraron distribuciones disponibles o hubo un error al obtener la lista.${RESET}"
+# ⚠️ Validar si no hay distribuciones disponibles
+if [[ "$COUNT" -eq 0 ]]; then
+    echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en su cuenta.${RESET}"
     exit 0
 fi
 
