@@ -146,9 +146,9 @@ while true; do
         # Mostrar estado actual con colores y texto amigable
         CURRENT_STATUS=$(aws cloudfront get-distribution --id "$ID" | jq -r '.Distribution.DistributionConfig.Enabled')
         if [[ "$CURRENT_STATUS" == "true" ]]; then
-            echo -e "${YELLOW}La distribución ahora está ${GREEN}ACTIVADA${RESET}${YELLOW}.${RESET}"
+            echo -e "${YELLOW}La distribución ahora está ${GREEN}ACTIVADA${RESET}${GREEN}.${RESET}"
         else
-            echo -e "${YELLOW}La distribución ahora está ${RED}DESACTIVADA${RESET}${YELLOW}.${RESET}"
+            echo -e "${YELLOW}La distribución ahora está ${RED}DESACTIVADA${RESET}${GREEN}.${RESET}"
         fi
 
         # Obtener nuevo ETag para eliminar
