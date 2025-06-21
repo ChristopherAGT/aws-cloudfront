@@ -114,7 +114,7 @@ while true; do
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
         # Modificar Enabled a false en DistributionConfig y guardar sólo DistributionConfig en disabled-config.json
-        jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp-config.json #> disabled-config.json
+        jq '.DistributionConfig | .Enabled = false' temp-config.json > disabled-config.json
 
         # Actualizar distribución con Enabled=false
         if ! aws cloudfront update-distribution --id "$ID" --if-match "$ETAG" --distribution-config file://disabled-config.json > /dev/null 2>&1; then
