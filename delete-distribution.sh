@@ -125,6 +125,7 @@ while true; do
 
         echo -e "${BLUE}⌛ Esperando que la distribución se desactive y despliegue...${RESET}"
 
+# ⏳ Spinner bonito mientras se espera desactivación y despliegue
 spinner="/-\|"
 i=0
 
@@ -137,7 +138,7 @@ while true; do
         break
     fi
 
-    printf "\r${BLUE}... esperando que se desactive y despliegue ${spinner:i++%${#spinner}:1}${RESET}"
+    printf "\r${BLUE}⏳ Esperando que se desactive y despliegue ${spinner:i++%${#spinner}:1}${RESET}"
 done
 printf "\r${GREEN}✅ Distribución desactivada y desplegada. Procediendo a eliminar...       ${RESET}\n"
 
