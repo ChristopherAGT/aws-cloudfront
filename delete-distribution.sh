@@ -130,7 +130,7 @@ spinner=("⠋" "⠙" "⠸" "⠴" "⠦" "⠇")
 i=0
 
 while true; do
-    sleep 3
+    sleep 1
     STATUS_ENABLED=$(aws cloudfront get-distribution --id "$ID" | jq -r '.Distribution.DistributionConfig.Enabled')
     STATUS_DEPLOYED=$(aws cloudfront get-distribution --id "$ID" | jq -r '.Distribution.Status')
 
