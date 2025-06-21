@@ -126,7 +126,7 @@ while true; do
         echo -e "${BLUE}⌛ Esperando que la distribución se desactive y despliegue...${RESET}"
 
 # ⏳ Spinner bonito mientras se espera desactivación y despliegue
-spinner="/-\|"
+spinner=("⠋" "⠙" "⠸" "⠴" "⠦" "⠇")
 i=0
 
 while true; do
@@ -138,9 +138,10 @@ while true; do
         break
     fi
 
-    printf "\r${BLUE}⏳ Esperando que se desactive y despliegue ${spinner:i++%${#spinner}:1}${RESET}"
+    echo -ne "\r${BLUE}⏳ Esperando ${spinner[i++ % ${#spinner[@]}]}${RESET}"
 done
-printf "\r${GREEN}✅ Distribución desactivada y desplegada. Procediendo a eliminar...       ${RESET}\n"
+
+echo -e "\r${GREEN}✅ Distribución desactivada y desplegada. Procediendo a eliminar...       ${RESET}"
 
         # Obtener nuevo ETag para eliminar
         NEW_ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
