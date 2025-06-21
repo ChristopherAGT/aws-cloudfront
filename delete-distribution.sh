@@ -40,8 +40,8 @@ divider
 DISTROS=$(aws cloudfront list-distributions --output json)
 COUNT=$(echo "$DISTROS" | jq '.DistributionList.Items | length')
 
-if [ "$COUNT" -eq 0 ]; then
-    echo -e "${YELLOW}⚠️ No se encontraron distribuciones disponibles.${RESET}"
+if [[ -z "$COUNT" || "$COUNT" -eq 0 ]]; then
+    echo -e "${YELLOW}⚠️ No se encontraron distribuciones disponibles o hubo un error al obtener la lista.${RESET}"
     exit 0
 fi
 
