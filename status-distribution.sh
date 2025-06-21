@@ -3,10 +3,10 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT                     ║
+# ║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT           ║
 # ╚══════════════════════════════════════════════════════════╝
 
-# Colores
+# 🎨 Colores
 RED='\e[1;91m'
 GREEN='\e[1;92m'
 YELLOW='\e[1;93m'
@@ -15,55 +15,54 @@ CYAN='\e[1;96m'
 BOLD='\e[1m'
 RESET='\e[0m'
 
+# 📏 Línea divisoria
 divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
+# 🧱 Encabezado
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT           ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
-# 🔍 Verificar dependencias
+# 🔍 Verificar dependencias necesarias
 if ! command -v aws &>/dev/null || ! command -v jq &>/dev/null; then
-    echo -e "${RED}❌ Este script requiere AWS CLI y jq.${RESET}"
+    echo -e "${RED}❌ Este script requiere AWS CLI y jq instalados.${RESET}"
     exit 1
 fi
 
-# 🔍 Obteniendo lista de distribuciones
+# 🔍 Obtener lista de distribuciones
 divider
 echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones activas...${RESET}"
 divider
 
 # 📥 Ejecutar comando AWS con manejo de errores
 RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
-STATUS=$?
 
-# ❌ Validar si AWS CLI falló
-if [[ $STATUS -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
+# ❌ Validar si hubo un error al ejecutar el comando
+if [[ $? -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
     echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica conexión, credenciales o permisos.${RESET}"
     exit 1
 fi
 
-# 🧪 Validar si el campo Items existe y es un array
-IS_ARRAY=$(echo "$RAW_OUTPUT" | jq -r 'has("DistributionList") and (.DistributionList | has("Items"))')
+# 📊 Obtener cantidad de distribuciones (seguro incluso si Items no existe)
+COUNT=$(echo "$RAW_OUTPUT" | jq -r '.DistributionList.Quantity')
 
-if [[ "$IS_ARRAY" != "true" ]]; then
-    echo -e "${RED}❌ La respuesta no contiene el campo esperado 'Items'.${RESET}"
+# ❌ Validar que sea número
+if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
+    echo -e "${RED}❌ Error al interpretar la cantidad de distribuciones.${RESET}"
     exit 1
 fi
 
-# 📊 Contar las distribuciones de forma segura
-COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length')
-
-# ⚠️ Validar si no hay distribuciones activas
+# ⚠️ Si no hay distribuciones, mensaje amigable
 if [[ "$COUNT" -eq 0 ]]; then
     echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
 
-# ✅ Si todo está bien, continuar
+# ✅ Continuar con despliegue
 DISTROS="$RAW_OUTPUT"
 
 # 📋 Cabecera de tabla
@@ -73,7 +72,7 @@ printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-21s │ %-8s ║${RESET
   "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
 echo -e "${BOLD}${CYAN}╟───────────────────────────────────────────────────────────────────────────────────────────────────╢${RESET}"
 
-# 📄 Mostrar cada fila
+# 📄 Mostrar las filas de la tabla
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
     ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
@@ -81,7 +80,7 @@ for ((i = 0; i < COUNT; i++)); do
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
-    # Estado con color
+    # 🎯 Formatear estado
     if [[ "$ENABLED" == "true" ]]; then
         STATE_RAW="Enabled"
         STATE_COLOR="${GREEN}Enabled${RESET}"
@@ -90,15 +89,15 @@ for ((i = 0; i < COUNT; i++)); do
         STATE_COLOR="${RED}Disabled${RESET}"
     fi
 
-    # Alineación final
+    # 📏 Alinear la columna de estado
     STATE_LEN=${#STATE_RAW}
     PADDING=$((8 - STATE_LEN))
     SPACES=$(printf '%*s' "$PADDING" '')
 
-    # Imprimir fila
+    # 🖨️ Imprimir fila
     printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
     echo -e "$STATE_COLOR$SPACES${CYAN} ║${RESET}"
 done
 
-# 📦 Cierre de tabla
+# 🔚 Pie de tabla
 echo -e "${BOLD}${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝${RESET}"
