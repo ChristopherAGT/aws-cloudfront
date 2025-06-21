@@ -106,7 +106,16 @@ CONFIG=$(jq '.DistributionConfig' config_original.json)
 
 # 🔍 Obtener dominio actual
 ORIGIN_ACTUAL=$(echo "$CONFIG" | jq -r '.Origins.Items[0].DomainName')
-echo -e "${YELLOW}🌐 Dominio de origen actual: ${BOLD}${ORIGIN_ACTUAL}${RESET}"
+
+# 🌐 Resolver IP del dominio actual
+IP_DOMINIO_ACTUAL=$(getent hosts "$ORIGIN_ACTUAL" | awk '{ print $1 }' | head -n 1)
+if [[ -z "$IP_DOMINIO_ACTUAL" ]] && command -v dig &>/dev/null; then
+    IP_DOMINIO_ACTUAL=$(dig +short "$ORIGIN_ACTUAL" | head -n 1)
+fi
+[[ -z "$IP_DOMINIO_ACTUAL" ]] && IP_DOMINIO_ACTUAL="IP no encontrada"
+
+# 💬 Mostrar dominio + IP
+echo -e "${YELLOW}🌐 Dominio de origen actual: ${BOLD}${ORIGIN_ACTUAL} (${IP_DOMINIO_ACTUAL})${RESET}"
 
 # ✅ Función para validar dominio con mensajes detallados
 validar_dominio() {
@@ -144,8 +153,8 @@ done
 # 🔁 Bucle principal: pedir dominio y confirmar
 while true; do
     # Obtener IP del dominio
-    IP_DOMINIO_NEW=$(dig +short "$NUEVO_ORIGEN" | head -n 1)
-    [[ -z "$IP_DOMINIO_NEW" ]] && IP_DOMINIO_NEW="IP no encontrada"
+    IP_DOMINIO_NEW=$(getent hosts "$NUEVO_ORIGEN" | awk '{ print $1 }' | head -n 1)
+[[ -z "$IP_DOMINIO_NEW" ]] && IP_DOMINIO_NEW="IP no encontrada"
 
     echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN} (${IP_DOMINIO_NEW})${RESET}"
 
