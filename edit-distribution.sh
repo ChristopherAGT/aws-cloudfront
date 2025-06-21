@@ -143,7 +143,11 @@ done
 
 # 🔁 Bucle principal: pedir dominio y confirmar
 while true; do
-    echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN}${RESET}"
+    # Obtener IP del dominio
+    IP_DOMINIO_NEW=$(dig +short "$NUEVO_ORIGEN" | head -n 1)
+    [[ -z "$IP_DOMINIO_NEW" ]] && IP_DOMINIO_NEW="IP no encontrada"
+
+    echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN} (${IP_DOMINIO_NEW})${RESET}"
 
     read -p $'\e[1;93m¿Confirmar el cambio? (s/n): \e[0m' CONFIRMAR
     CONFIRMAR=$(echo "$CONFIRMAR" | tr '[:upper:]' '[:lower:]')
