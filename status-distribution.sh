@@ -37,11 +37,17 @@ echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones activas...${RESET
 divider
 
 # 📥 Ejecutar comando AWS con manejo de errores
-RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
+RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>&1)
+STATUS=$?
 
-# ❌ Validar si hubo un error real al ejecutar el comando
-if [[ $? -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
-    echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica conexión, credenciales o permisos.${RESET}"
+if [[ $STATUS -ne 0 ]]; then
+    echo -e "${RED}❌ Error al ejecutar AWS CLI: ${RAW_OUTPUT}${RESET}"
+    echo -e "${RED}🔍 Verifica tu conexión, credenciales o permisos configurados.${RESET}"
+    exit 1
+fi
+
+if [[ -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
+    echo -e "${RED}❌ La respuesta de AWS CLI fue vacía o inválida.${RESET}"
     exit 1
 fi
 
