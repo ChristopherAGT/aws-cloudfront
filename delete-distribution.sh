@@ -3,7 +3,7 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║        ❌ ELIMINADOR INTERACTIVO DE DISTRIBUCIONES CF    ║
+# ║        ❌ ELIMINADOR DE DISTRIBUCIONES CLOUDFRONT                  ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
@@ -22,7 +22,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        ❌ ELIMINADOR INTERACTIVO DE DISTRIBUCIONES CF    ║"
+echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT                ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
