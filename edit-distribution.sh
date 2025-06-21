@@ -21,9 +21,9 @@ divider() {
 }
 
 echo -e "${CYAN}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       ✏️ EDITOR DE DOMINIOS DE ORIGEN - CLOUDFRONT                 ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔═══════════════════════════════════════════════════════╗"
+echo "║       ✏️ EDITOR DE DOMINIOS DE ORIGEN - CLOUDFRONT              ║"
+echo "╚═══════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
 # Verificar herramientas
