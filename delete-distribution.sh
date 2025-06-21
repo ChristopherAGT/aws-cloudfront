@@ -3,7 +3,7 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║
+# ║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT       ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
@@ -22,7 +22,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║"
+echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT       ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -63,7 +63,6 @@ for ((i = 0; i < COUNT; i++)); do
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
-    # 🟢 Preparar estado con color y sin color
     if [[ "$ENABLED" == "true" ]]; then
         STATE_RAW="Enabled"
         STATE_COLOR="${GREEN}Enabled${RESET}"
@@ -72,19 +71,15 @@ for ((i = 0; i < COUNT; i++)); do
         STATE_COLOR="${RED}Disabled${RESET}"
     fi
 
-    # 📏 Calcular espacios para que la columna tenga 8 caracteres visibles
     STATE_LEN=${#STATE_RAW}
     PADDING=$((8 - STATE_LEN))
     SPACES=$(printf '%*s' "$PADDING" '')
 
-    # 🔲 Imprimir fila alineada
     printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
     echo -e "$STATE_COLOR$SPACES${CYAN} ║${RESET}"
 done
 
-# 🔚 Pie de la tabla
 echo -e "${BOLD}${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝${RESET}"
-
 echo ""
 
 # Selección válida del usuario
@@ -111,37 +106,54 @@ while true; do
     if [[ "$CONFIRMAR" == "s" ]]; then
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
-        # Desactivar la distribución correctamente
+        # Obtener configuración completa
         aws cloudfront get-distribution-config --id "$ID" > temp-config.json
-        jq '.DistributionConfig |= (.Enabled = false)' temp-config.json > disabled-config.json
 
+        # Extraer y modificar solo DistributionConfig para desactivar
+        jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp-config.json > disabled-config.json
+
+        # Actualizar distribución con Enabled = false
         aws cloudfront update-distribution \
             --id "$ID" \
             --if-match "$ETAG" \
             --distribution-config file://disabled-config.json > /dev/null
 
-        # Bucle con spinner mientras se espera la desactivación
+        # Spinner esperando que se desactive
+        echo -e "${BLUE}⌛ Esperando propagación (desactivación)...${RESET}"
+
+        MAX_WAIT=600  # 10 minutos máximo
+        WAITED=0
         i=0
         sp='|/-\'
+
         while true; do
             STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
             if [[ "$STATUS" == "false" ]]; then
                 break
             fi
-            printf "\r${BLUE}⌛ Esperando que se desactive... ${sp:i++%${#sp}:1}${RESET}"
+            printf "\r${BLUE}⌛ Esperando propagación (desactivación)... %s %d seg${RESET}" "${sp:i++%${#sp}:1}" "$WAITED"
             sleep 1
+            ((WAITED++))
+            if (( WAITED >= MAX_WAIT )); then
+                echo -e "\n${RED}❌ Tiempo máximo de espera excedido. Intente más tarde.${RESET}"
+                # Limpieza antes de salir
+                rm -f temp-config.json disabled-config.json
+                exit 1
+            fi
         done
-        printf "\r${GREEN}✅ Distribución desactivada. Procediendo a eliminar...        ${RESET}\n"
+        printf "\r${GREEN}✅ Distribución desactivada. Procediendo a eliminar...      ${RESET}\n"
 
+        # Obtener nuevo ETag tras actualización
         NEW_ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
 
+        # Intentar eliminar
         if aws cloudfront delete-distribution --id "$ID" --if-match "$NEW_ETAG"; then
             echo -e "${GREEN}✅ Distribución eliminada exitosamente.${RESET}"
         else
             echo -e "${RED}❌ Error al eliminar la distribución.${RESET}"
         fi
 
-        # Limpieza de archivos temporales
+        # Limpiar archivos temporales
         rm -f temp-config.json disabled-config.json
         break
 
