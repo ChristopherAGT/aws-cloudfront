@@ -119,17 +119,17 @@ while true; do
     if [[ "$CONFIRMAR" == "s" ]]; then
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
-        # Obtener configuración actual
-        aws cloudfront get-distribution-config --id "$ID" > temp-config.json
+        # Obtener configuración actual y guardarla
+aws cloudfront get-distribution-config --id "$ID" > temp-config.json
 
-        # Eliminar 'ETag' y otros campos no válidos para actualización
-        jq '.DistributionConfig.Enabled = false' temp-config.json > disabled-config.json
+# Extraer solo DistributionConfig y modificar Enabled
+jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp-config.json > disabled-config.json
 
-        # Actualizar distribución para desactivar
-        aws cloudfront update-distribution \
-            --id "$ID" \
-            --if-match "$ETAG" \
-            --distribution-config file://disabled-config.json > /dev/null
+# Actualizar distribución con configuración modificada
+aws cloudfront update-distribution \
+    --id "$ID" \
+    --if-match "$ETAG" \
+    --distribution-config file://disabled-config.json > /dev/null
 
         # Bucle para esperar que la distribución se desactive con spinner
         (
