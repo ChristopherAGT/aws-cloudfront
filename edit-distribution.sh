@@ -206,3 +206,5 @@ echo -e "${MAGENTA}🧼 Gracias por usar el editor de orígenes.${RESET}"
 
 # 🗑️ Eliminar este script
 rm -- "$0"
+
+#remover dig (ip)
