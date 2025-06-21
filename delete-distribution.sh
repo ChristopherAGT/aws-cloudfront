@@ -89,7 +89,7 @@ echo ""
 
 # Selección válida del usuario
 while true; do
-    read -p $'\e[1;93m🧩 Ingrese el número de la distribución a eliminar: \e[0m' SELECCION
+    read -p $'\e[1;93m🧩 seleccione la distribución que desea eliminar: \e[0m' SELECCION
     INDEX=$((SELECCION - 1))
     if [[ "$SELECCION" =~ ^[0-9]+$ ]] && [ "$INDEX" -ge 0 ] && [ "$INDEX" -lt "$COUNT" ]; then
         break
@@ -111,14 +111,16 @@ while true; do
     if [[ "$CONFIRMAR" == "s" ]]; then
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
-        aws cloudfront get-distribution-config --id "$ID" > temp-config.json
-        jq '.DistributionConfig.Enabled = false' temp-config.json > disabled-config.json
+        # Desactivar la distribución correctamente
+aws cloudfront get-distribution-config --id "$ID" > temp-config.json
 
-        aws cloudfront update-distribution \
-            --id "$ID" \
-            --if-match "$ETAG" \
-            --distribution-config file://disabled-config.json > /dev/null
+jq '.DistributionConfig |= (.Enabled = false)' temp-config.json > disabled-config.json
 
+aws cloudfront update-distribution \
+    --id "$ID" \
+    --if-match "$ETAG" \
+    --distribution-config file://disabled-config.json > /dev/null
+    
         echo -e "${BLUE}⌛ Esperando propagación (desactivación)...${RESET}"
 
         # Bucle para esperar que la distribución se desactive
