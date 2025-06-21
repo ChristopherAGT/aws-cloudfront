@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# ┌────────────────────────────────────────────────────────┐
+# │ Instalación silenciosa como comando global 'aws-manager' │
+# └────────────────────────────────────────────────────────┘
+if [[ "$0" != */aws-manager ]]; then
+    SCRIPT_PATH="$HOME/.aws-manager.sh"
+    curl -s https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/manager-distribution.sh -o "$SCRIPT_PATH"
+    chmod +x "$SCRIPT_PATH"
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$SCRIPT_PATH" "$HOME/.local/bin/aws-manager"
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
@@ -23,7 +35,7 @@ divider() {
 menu_header() {
     echo -e "${CYAN}"
     echo "╔═════════════════════════════════════════════╗"
-    echo "║        🛠️ AWS CLOUDFRONT MANAGER - PANEL            ║"
+    echo "║        🛠️ AWS CLOUDFRONT MANAGER - PANEL        ║"
     echo "╚═════════════════════════════════════════════╝"
     divider
 }
@@ -45,40 +57,6 @@ menu() {
 pause() {
     read -rp $'\n\e[1;93m👉 Presiona ENTER para volver al menú... \e[0m'
 }
-
-# Función para instalar el script como comando global
-install_command() {
-    SCRIPT_PATH="$HOME/.aws-cloudfront-manager.sh"
-    echo -e "${BLUE}Instalando comando global 'aws-manager'...${RESET}"
-
-    # Descargar el script completo y guardarlo en el HOME
-    curl -s https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/manager-distribution.sh -o "$SCRIPT_PATH"
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Error descargando el script. Instalación abortada.${RESET}"
-        exit 1
-    fi
-    chmod +x "$SCRIPT_PATH"
-
-    # Crear enlace simbólico en /usr/local/bin o ~/.local/bin
-    if [ -w "/usr/local/bin" ]; then
-        ln -sf "$SCRIPT_PATH" /usr/local/bin/aws-manager
-        echo -e "${GREEN}✅ Comando 'aws-manager' instalado en /usr/local/bin.${RESET}"
-    else
-        # Crear ~/.local/bin si no existe
-        mkdir -p "$HOME/.local/bin"
-        ln -sf "$SCRIPT_PATH" "$HOME/.local/bin/aws-manager"
-        echo -e "${YELLOW}⚠️ No se pudo instalar en /usr/local/bin."
-        echo -e "Se instaló en ~/.local/bin/aws-manager. Asegúrate de tener esta ruta en tu PATH.${RESET}"
-    fi
-
-    echo -e "${GREEN}✅ Instalación completa. Ejecuta 'aws-manager' para abrir el panel.${RESET}"
-}
-
-# Si se ejecuta con argumento 'install', instalar y salir
-if [[ "$1" == "install" ]]; then
-    install_command
-    exit 0
-fi
 
 while true; do
     menu
