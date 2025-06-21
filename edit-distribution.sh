@@ -104,49 +104,76 @@ aws cloudfront get-distribution-config --id "$ID" > config_original.json
 ETAG=$(jq -r '.ETag' config_original.json)
 CONFIG=$(jq '.DistributionConfig' config_original.json)
 
+# 🔍 Obtener dominio actual
 ORIGIN_ACTUAL=$(echo "$CONFIG" | jq -r '.Origins.Items[0].DomainName')
 echo -e "${YELLOW}🌐 Dominio de origen actual: ${BOLD}${ORIGIN_ACTUAL}${RESET}"
 
-# Función para validar dominio
+# ✅ Función para validar dominio con mensajes detallados
 validar_dominio() {
     local domain="$1"
     domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | xargs)
 
     if [[ -z "$domain" ]]; then
-        echo "El dominio no puede estar vacío."
+        echo -e "${RED}❌ El dominio no puede estar vacío.${RESET}"
         return 1
     fi
 
     if [[ "$domain" == http://* || "$domain" == https://* ]]; then
-        echo "No incluya 'http://' ni 'https://' en el dominio."
+        echo -e "${RED}❌ No incluya 'http://' ni 'https://' en el dominio.${RESET}"
         return 1
     fi
 
-    if ! [[ "$domain" =~ ^[a-z0-9.-]+$ ]]; then
-        echo "Dominio inválido. Solo se permiten letras minúsculas, números, guiones y puntos."
+    if ! [[ "$domain" =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]]; then
+        echo -e "${RED}❌ Dominio inválido. Debe tener formato tipo 'ejemplo.com' o 'cdn.miweb.net'.${RESET}"
         return 1
     fi
 
     return 0
 }
 
-# Solicitar nuevo dominio con validación
+# 🔁 Solicitar nuevo dominio con validación completa
 while true; do
     read -p $'\e[1;96m✏️ Ingrese su nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
+    NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
+
     if validar_dominio "$NUEVO_ORIGEN"; then
-        NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
         break
-    else
-        echo -e "${RED}❌ Por favor, ingrese un dominio válido.${RESET}"
     fi
 done
 
-# Confirmar
-echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN}${RESET}"
-read -p $'\e[1;93m¿Confirmar el cambio? (s/n): \e[0m' CONFIRMAR
+# 🔁 Bucle principal: pedir dominio y confirmar
+while true; do
+    echo -e "${YELLOW}⚠️ Se cambiará el dominio de origen a: ${BOLD}${NUEVO_ORIGEN}${RESET}"
 
-if [[ "${CONFIRMAR,,}" =~ ^(s|si|y|yes)$ ]]; then
-    echo -e "${BLUE}🔧 Actualizando configuración...${RESET}"
+    read -p $'\e[1;93m¿Confirmar el cambio? (s/n): \e[0m' CONFIRMAR
+    CONFIRMAR=$(echo "$CONFIRMAR" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$CONFIRMAR" == "s" ]]; then
+        echo -e "${BLUE}🔧 Actualizando configuración...${RESET}"
+        # Aquí se realizaría la actualización con jq, por ejemplo:
+        jq --arg newdomain "$NUEVO_ORIGEN" \
+           '.Origins.Items[0].DomainName = $newdomain' \
+           <<< "$CONFIG" > nueva_config.json
+        break  # ✅ Sale del bucle, todo correcto
+
+    elif [[ "$CONFIRMAR" == "n" ]]; then
+        echo -e "${RED}🔁 Se repetirá la edición del dominio de origen.${RESET}"
+        
+        # Volver a pedir el nuevo dominio
+        while true; do
+            read -p $'\e[1;96m✏️ Ingrese su nuevo dominio de origen: \e[0m' NUEVO_ORIGEN
+            NUEVO_ORIGEN=$(echo "$NUEVO_ORIGEN" | tr '[:upper:]' '[:lower:]' | xargs)
+            if validar_dominio "$NUEVO_ORIGEN"; then
+                break
+            else
+                echo -e "${RED}❌ Por favor, ingrese un dominio válido.${RESET}"
+            fi
+        done
+
+    else
+        echo -e "${RED}❌ Opción inválida. Solo se permite 's' o 'n'.${RESET}"
+    fi
+done
 
     jq --arg newdomain "$NUEVO_ORIGEN" \
         '.Origins.Items[0].DomainName = $newdomain' \
