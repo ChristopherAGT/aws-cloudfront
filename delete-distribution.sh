@@ -123,22 +123,23 @@ while true; do
             exit 1
         fi
 
-        echo -e "${BLUE}⌛ Esperando que la distribución se desactive...${RESET}"
+        echo -e "${BLUE}⌛ Esperando que la distribución se desactive y despliegue...${RESET}"
 
-        # Spinner simple
-        spinner="/-\|"
-        i=0
+spinner="/-\|"
+i=0
 
-        # Esperar hasta que la distribución esté desactivada
-        while true; do
-            sleep 3
-            STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
-            if [[ "$STATUS" == "false" ]]; then
-                break
-            fi
-            printf "\r${BLUE}... esperando que se desactive ${spinner:i++%${#spinner}:1}${RESET}"
-        done
-        printf "\r${GREEN}✅ Distribución desactivada. Procediendo a eliminar...       ${RESET}\n"
+while true; do
+    sleep 3
+    STATUS_ENABLED=$(aws cloudfront get-distribution --id "$ID" | jq -r '.Distribution.DistributionConfig.Enabled')
+    STATUS_DEPLOYED=$(aws cloudfront get-distribution --id "$ID" | jq -r '.Distribution.Status')
+
+    if [[ "$STATUS_ENABLED" == "false" && "$STATUS_DEPLOYED" == "Deployed" ]]; then
+        break
+    fi
+
+    printf "\r${BLUE}... esperando que se desactive y despliegue ${spinner:i++%${#spinner}:1}${RESET}"
+done
+printf "\r${GREEN}✅ Distribución desactivada y desplegada. Procediendo a eliminar...       ${RESET}\n"
 
         # Obtener nuevo ETag para eliminar
         NEW_ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
