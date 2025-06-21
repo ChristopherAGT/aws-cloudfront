@@ -31,7 +31,7 @@ menu_header() {
 menu() {
     clear
     menu_header
-    echo -e "${BOLD}${CYAN}Seleccione una opción:${RESET}"
+    echo -e "${BOLD}${CYAN}● Seleccione una opción:${RESET}"
     echo -e "${YELLOW}1.${RESET} 🆕 Crear distribución"
     echo -e "${YELLOW}2.${RESET} 📊 Ver estado de distribuciones"
     echo -e "${YELLOW}3.${RESET} ⚙️ Editar distribución"
