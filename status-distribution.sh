@@ -31,18 +31,37 @@ if ! command -v aws &>/dev/null || ! command -v jq &>/dev/null; then
     exit 1
 fi
 
-# Obtener lista de distribuciones
+# 🔍 Obtener lista de distribuciones activas
 divider
 echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones activas...${RESET}"
 divider
 
-DISTROS=$(aws cloudfront list-distributions --output json)
-COUNT=$(echo "$DISTROS" | jq '.DistributionList.Items | length')
+# 📥 Obtener lista de distribuciones con manejo de errores
+RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
 
-if [ "$COUNT" -eq 0 ]; then
-    echo -e "${YELLOW}⚠️ No se encontraron distribuciones disponibles.${RESET}"
+# 🔍 Verificar si ocurrió un error real (salida vacía o null)
+if [[ -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
+    echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica tu conexión, credenciales o permisos de AWS.${RESET}"
+    exit 1
+fi
+
+# 📊 Intentar contar las distribuciones (puede ser 0)
+COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length' 2>/dev/null)
+
+# 🧪 Verificar que COUNT sea numérico
+if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
+    echo -e "${RED}❌ Error al interpretar el número de distribuciones.${RESET}"
+    exit 1
+fi
+
+# ⚠️ Validar si no hay distribuciones
+if [[ "$COUNT" -eq 0 ]]; then
+    echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
+
+# ✅ Si llegó hasta aquí, continuar con el procesamiento normal
+DISTROS="$RAW_OUTPUT"
 
 # 📋 Cabecera de tabla
 echo ""
