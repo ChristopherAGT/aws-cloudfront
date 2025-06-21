@@ -3,13 +3,14 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║        📊 VISOR DE DISTRIBUCIONES CLOUDFRONT             ║
+# ║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT           ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
 RED='\e[1;91m'
 GREEN='\e[1;92m'
 YELLOW='\e[1;93m'
+BLUE='\e[1;94m'
 CYAN='\e[1;96m'
 BOLD='\e[1m'
 RESET='\e[0m'
@@ -20,7 +21,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        📊 VISOR DE DISTRIBUCIONES - CLOUDFRONT                       ║"
+echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT                     ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -30,8 +31,9 @@ if ! command -v aws &>/dev/null || ! command -v jq &>/dev/null; then
     exit 1
 fi
 
+# Obtener lista de distribuciones
 divider
-echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones...${RESET}"
+echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones activas...${RESET}"
 divider
 
 DISTROS=$(aws cloudfront list-distributions --output json)
@@ -42,26 +44,38 @@ if [ "$COUNT" -eq 0 ]; then
     exit 0
 fi
 
+# 📋 Cabecera de tabla
 echo ""
 echo -e "${BOLD}${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════════════════╗${RESET}"
-printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-21s │ %-12s ║${RESET}\n" \
+printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-21s │ %-8s ║${RESET}\n" \
   "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
 echo -e "${BOLD}${CYAN}╟───────────────────────────────────────────────────────────────────────────────────────────────────╢${RESET}"
 
+# 📄 Mostrar las filas de la tabla
 for ((i = 0; i < COUNT; i++)); do
+    ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
     ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
     DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
+    # Preparar estado con color
     if [[ "$ENABLED" == "true" ]]; then
-        STATE="${GREEN}ACTIVADA${RESET}"
+        STATE_RAW="Enabled"
+        STATE_COLOR="${GREEN}Enabled${RESET}"
     else
-        STATE="${RED}DESACTIVADA${RESET}"
+        STATE_RAW="Disabled"
+        STATE_COLOR="${RED}Disabled${RESET}"
     fi
 
-    printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ %-12s ${CYAN}║${RESET}\n" \
-        "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$STATE"
+    STATE_LEN=${#STATE_RAW}
+    PADDING=$((8 - STATE_LEN))
+    SPACES=$(printf '%*s' "$PADDING" '')
+
+    # Imprimir fila alineada
+    printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
+    echo -e "$STATE_COLOR$SPACES${CYAN} ║${RESET}"
 done
 
+# Pie de la tabla
 echo -e "${BOLD}${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝${RESET}"
