@@ -20,22 +20,9 @@ divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
-spinner() {
-    local pid=$1
-    local delay=0.1
-    local spinstr='|/-\'
-    while kill -0 "$pid" 2>/dev/null; do
-        for i in $(seq 0 3); do
-            printf "\r${BLUE}⌛ Esperando propagación %c${RESET}" "${spinstr:i:1}"
-            sleep $delay
-        done
-    done
-    printf "\r"
-}
-
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT                ║"
+echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -65,7 +52,7 @@ printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-21s │ %-8s ║${RESET
   "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
 echo -e "${BOLD}${CYAN}╟───────────────────────────────────────────────────────────────────────────────────────────────────╢${RESET}"
 
-# Mostrar las filas de la tabla
+# 📄 Mostrar las filas de la tabla
 declare -a IDS
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
@@ -76,6 +63,7 @@ for ((i = 0; i < COUNT; i++)); do
     COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
     ENABLED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Enabled")
 
+    # Preparar estado con color
     if [[ "$ENABLED" == "true" ]]; then
         STATE_RAW="Enabled"
         STATE_COLOR="${GREEN}Enabled${RESET}"
@@ -88,11 +76,14 @@ for ((i = 0; i < COUNT; i++)); do
     PADDING=$((8 - STATE_LEN))
     SPACES=$(printf '%*s' "$PADDING" '')
 
+    # Imprimir fila alineada
     printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ " "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT"
     echo -e "$STATE_COLOR$SPACES${CYAN} ║${RESET}"
 done
 
+# Pie de la tabla
 echo -e "${BOLD}${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝${RESET}"
+
 echo ""
 
 # Selección válida del usuario
@@ -107,11 +98,14 @@ while true; do
 done
 
 ID="${IDS[$INDEX]}"
-ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
+
+# Obtener configuración y ETag actual
+aws cloudfront get-distribution-config --id "$ID" > temp-config.json
+ETAG=$(jq -r '.ETag' temp-config.json)
 
 echo -e "${YELLOW}⚠️ Está por eliminar la distribución seleccionada.${RESET}"
 
-# Confirmar s/n con validación y bucle
+# Confirmar s/n con validación
 while true; do
     read -p $'\e[1;91m❓ ¿Confirmar eliminación? (s/n): \e[0m' CONFIRMAR
     CONFIRMAR=$(echo "$CONFIRMAR" | tr '[:upper:]' '[:lower:]')
@@ -119,38 +113,41 @@ while true; do
     if [[ "$CONFIRMAR" == "s" ]]; then
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
-        # Obtener configuración actual y guardarla
-aws cloudfront get-distribution-config --id "$ID" > temp-config.json
+        # Modificar Enabled a false en DistributionConfig y guardar sólo DistributionConfig en disabled-config.json
+        jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp-config.json > disabled-config.json
 
-# Extraer solo DistributionConfig y modificar Enabled
-jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp-config.json > disabled-config.json
+        # Actualizar distribución con Enabled=false
+        if ! aws cloudfront update-distribution --id "$ID" --if-match "$ETAG" --distribution-config file://disabled-config.json > /dev/null 2>&1; then
+            echo -e "${RED}❌ Error al desactivar la distribución. Abortando.${RESET}"
+            rm -f temp-config.json disabled-config.json
+            exit 1
+        fi
 
-# Actualizar distribución con configuración modificada
-aws cloudfront update-distribution \
-    --id "$ID" \
-    --if-match "$ETAG" \
-    --distribution-config file://disabled-config.json > /dev/null
+        echo -e "${BLUE}⌛ Esperando que la distribución se desactive...${RESET}"
 
-        # Bucle para esperar que la distribución se desactive con spinner
-        (
-            while true; do
-                STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
-                if [[ "$STATUS" == "false" ]]; then
-                    break
-                fi
-                sleep 3
-            done
-        ) &
-        spinner $!
+        # Spinner simple
+        spinner="/-\|"
+        i=0
 
-        echo -e "${GREEN}✅ Distribución desactivada. Procediendo a eliminar...${RESET}"
+        # Esperar hasta que la distribución esté desactivada
+        while true; do
+            sleep 3
+            STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
+            if [[ "$STATUS" == "false" ]]; then
+                break
+            fi
+            printf "\r${BLUE}... esperando que se desactive ${spinner:i++%${#spinner}:1}${RESET}"
+        done
+        printf "\r${GREEN}✅ Distribución desactivada. Procediendo a eliminar...       ${RESET}\n"
 
+        # Obtener nuevo ETag para eliminar
         NEW_ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
 
+        # Intentar eliminar la distribución
         if aws cloudfront delete-distribution --id "$ID" --if-match "$NEW_ETAG"; then
             echo -e "${GREEN}✅ Distribución eliminada exitosamente.${RESET}"
         else
-            echo -e "${RED}❌ Error al eliminar la distribución. Asegúrese que la distribución esté deshabilitada y espere unos minutos antes de intentar nuevamente.${RESET}"
+            echo -e "${RED}❌ Error al eliminar la distribución.${RESET}"
         fi
 
         # Limpieza
