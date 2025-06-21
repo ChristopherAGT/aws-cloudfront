@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ┌────────────────────────────────────────────────────────┐
-# │ Instalación silenciosa como comando global 'aws-manager' │
+# │ Instalación silenciosa como comando global 'aws-manager'         │
 # └────────────────────────────────────────────────────────┘
 if [[ "$0" != */aws-manager ]]; then
     SCRIPT_PATH="$HOME/.aws-manager.sh"
@@ -35,7 +35,7 @@ divider() {
 menu_header() {
     echo -e "${CYAN}"
     echo "╔════════════════════════════════════════════╗"
-    echo "║         🛠️ AWS CLOUDFRONT MANAGER - PANEL          ║"
+    echo "║          🛠️ AWS CLOUDFRONT MANAGER - PANEL         ║"
     echo "╚════════════════════════════════════════════╝"
     divider
 }
@@ -58,6 +58,26 @@ pause() {
     read -rp $'\n\e[1;93m👉 Presiona ENTER para volver al menú... \e[0m'
 }
 
+# Función genérica para ejecutar scripts
+ejecutar_script() {
+    local url="$1"
+    local archivo="$2"
+    local mostrar_exito="$3"
+
+    if wget -q "$url" -O "$archivo"; then
+        bash "$archivo"
+        local RET=$?
+        rm -f "$archivo"
+        if [ "$RET" -eq 0 ] && [ "$mostrar_exito" = true ]; then
+            echo -e "${GREEN}✅ Script ejecutado correctamente.${RESET}"
+        elif [ "$RET" -ne 0 ]; then
+            echo -e "${RED}❌ El script terminó con errores (Código $RET).${RESET}"
+        fi
+    else
+        echo -e "${RED}❌ No se pudo descargar el script: $archivo.${RESET}"
+    fi
+}
+
 while true; do
     menu
     read -rp $'\e[1;93m🔢 Ingrese opción (1-6): \e[0m' opcion
@@ -65,82 +85,27 @@ while true; do
     case "$opcion" in
         1)
             echo -e "${BLUE}Ejecutando: Crear distribución...${RESET}"
-            if wget -q https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/create-distribution.sh -O create-distribution.sh; then
-                bash create-distribution.sh
-                RET=$?
-                rm -f create-distribution.sh
-                if [ $RET -eq 0 ]; then
-                    echo -e "${GREEN}✅ Script ejecutado correctamente.${RESET}"
-                else
-                    echo -e "${RED}❌ El script terminó con errores (Código $RET).${RESET}"
-                fi
-            else
-                echo -e "${RED}❌ No se pudo descargar el script de creación.${RESET}"
-            fi
+            ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/create-distribution.sh" "create-distribution.sh" true
             pause
             ;;
         2)
             echo -e "${BLUE}Ejecutando: Ver estado de distribuciones...${RESET}"
-            if wget -q https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/status-distribution.sh -O status-distribution.sh; then
-                bash status-distribution.sh
-                RET=$?
-                rm -f status-distribution.sh
-                if [ $RET -eq 0 ]; then
-                    echo -e "${GREEN}✅ Script ejecutado correctamente.${RESET}"
-                else
-                    echo -e "${RED}❌ El script terminó con errores (Código $RET).${RESET}"
-                fi
-            else
-                echo -e "${RED}❌ No se pudo descargar el script de estado.${RESET}"
-            fi
+            ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/status-distribution.sh" "status-distribution.sh" false
             pause
             ;;
         3)
             echo -e "${BLUE}Ejecutando: Editar distribución...${RESET}"
-            if wget -q https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/edit-distribution.sh -O edit-distribution.sh; then
-                bash edit-distribution.sh
-                RET=$?
-                rm -f edit-distribution.sh
-                if [ $RET -eq 0 ]; then
-                    echo -e "${GREEN}✅ Script ejecutado correctamente.${RESET}"
-                else
-                    echo -e "${RED}❌ El script terminó con errores (Código $RET).${RESET}"
-                fi
-            else
-                echo -e "${RED}❌ No se pudo descargar el script de edición.${RESET}"
-            fi
+            ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/edit-distribution.sh" "edit-distribution.sh" true
             pause
             ;;
         4)
             echo -e "${BLUE}Ejecutando: Activar/Desactivar distribución...${RESET}"
-            if wget -q https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/control-status-distribution.sh -O control-status-distribution.sh; then
-                bash control-status-distribution.sh
-                RET=$?
-                rm -f control-status-distribution.sh
-                if [ $RET -eq 0 ]; then
-                    echo -e "${GREEN}✅ Script ejecutado correctamente.${RESET}"
-                else
-                    echo -e "${RED}❌ El script terminó con errores (Código $RET).${RESET}"
-                fi
-            else
-                echo -e "${RED}❌ No se pudo descargar el script de control de estado.${RESET}"
-            fi
+            ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/control-status-distribution.sh" "control-status-distribution.sh" true
             pause
             ;;
         5)
             echo -e "${BLUE}Ejecutando: Eliminar distribución...${RESET}"
-            if wget -q https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/delete-distribution.sh -O delete-distribution.sh; then
-                bash delete-distribution.sh
-                RET=$?
-                rm -f delete-distribution.sh
-                if [ $RET -eq 0 ]; then
-                    echo -e "${GREEN}✅ Script ejecutado correctamente.${RESET}"
-                else
-                    echo -e "${RED}❌ El script terminó con errores (Código $RET).${RESET}"
-                fi
-            else
-                echo -e "${RED}❌ No se pudo descargar el script de eliminación.${RESET}"
-            fi
+            ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/delete-distribution.sh" "delete-distribution.sh" true
             pause
             ;;
         6)
