@@ -37,30 +37,33 @@ echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones activas...${RESET
 divider
 
 # 📥 Ejecutar comando AWS con manejo de errores
-RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>&1)
+RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
 STATUS=$?
 
-if [[ $STATUS -ne 0 ]]; then
-    echo -e "${RED}❌ Error al ejecutar AWS CLI: ${RAW_OUTPUT}${RESET}"
-    echo -e "${RED}🔍 Verifica tu conexión, credenciales o permisos configurados.${RESET}"
+# ❌ Validar si AWS CLI falló
+if [[ $STATUS -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
+    echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica conexión, credenciales o permisos.${RESET}"
     exit 1
 fi
 
-if [[ -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
-    echo -e "${RED}❌ La respuesta de AWS CLI fue vacía o inválida.${RESET}"
+# 🧪 Validar si el campo Items existe y es un array
+IS_ARRAY=$(echo "$RAW_OUTPUT" | jq -r 'has("DistributionList") and (.DistributionList | has("Items"))')
+
+if [[ "$IS_ARRAY" != "true" ]]; then
+    echo -e "${RED}❌ La respuesta no contiene el campo esperado 'Items'.${RESET}"
     exit 1
 fi
 
-# 🧪 Validar si el campo Items existe (si no, no hay distribuciones)
-HAS_ITEMS=$(echo "$RAW_OUTPUT" | jq -e '.DistributionList | has("Items")' 2>/dev/null)
-if [[ "$HAS_ITEMS" != "true" ]]; then
+# 📊 Contar las distribuciones de forma segura
+COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length')
+
+# ⚠️ Validar si no hay distribuciones activas
+if [[ "$COUNT" -eq 0 ]]; then
     echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
 
-# 📊 Obtener cantidad de distribuciones
-COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length')
-
+# ✅ Si todo está bien, continuar
 DISTROS="$RAW_OUTPUT"
 
 # 📋 Cabecera de tabla
