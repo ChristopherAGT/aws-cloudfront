@@ -3,7 +3,7 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT           ║
+# ║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT                     ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
