@@ -6,7 +6,7 @@ clear
 # ║        ❌ ELIMINADOR INTERACTIVO DE DISTRIBUCIONES CF    ║
 # ╚══════════════════════════════════════════════════════════╝
 
-# Colores
+# 🎨 Colores
 RED='\e[1;91m'
 GREEN='\e[1;92m'
 YELLOW='\e[1;93m'
@@ -20,19 +20,20 @@ divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
+# 🧾 Encabezado
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        ❌ ELIMINADOR INTERACTIVO DE DISTRIBUCIONES CF    ║"
+echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT    ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
-# Verificar dependencias
+# 🧪 Verificar dependencias
 if ! command -v aws &>/dev/null || ! command -v jq &>/dev/null; then
     echo -e "${RED}❌ Este script requiere AWS CLI y jq.${RESET}"
     exit 1
 fi
 
-# Obtener lista de distribuciones
+# 🔍 Obtener lista de distribuciones
 divider
 echo -e "${BOLD}${CYAN}🔍 Buscando distribuciones activas...${RESET}"
 divider
@@ -45,42 +46,49 @@ if [ "$COUNT" -eq 0 ]; then
     exit 0
 fi
 
-# Imprimir cabecera de tabla (sin ID)
-printf "${BOLD}${CYAN}%-4s│ %-22s│ %-30s│ %-18s│ %-20s${RESET}\n" \
-  " Nº" "Origen" "Dominio CloudFront" "Descripción" "Creación"
-printf "${CYAN}────┼────────────────────────────┼────────────────────────────────┼──────────────────────┼────────────────────────────${RESET}\n"
+# 📋 Encabezado de la tabla
+echo ""
+echo -e "${BOLD}${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════════════════════╗${RESET}"
+printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-20s │ %-8s ║${RESET}\n" \
+  "Nº" "Origen" "Dominio CloudFront" "Descripción" "Creación"
+echo -e "${BOLD}${CYAN}╟───────────────────────────────────────────────────────────────────────────────────────────────────╢${RESET}"
 
-# Declarar arreglo de IDs ocultos
+# 📄 Mostrar filas de la tabla
 declare -a IDS
-
-# Mostrar distribuciones como tabla (sin mostrar ID)
 for ((i = 0; i < COUNT; i++)); do
-    IDS[$i]=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
-    ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
-    COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
-    DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
-    CREATED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].LastModifiedTime")
+    ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
+    IDS[$i]="$ID"
 
-    printf "%-4s│ %-22s│ %-30s│ %-18s│ %-20s\n" \
+    ORIGIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Origins.Items[0].DomainName")
+    DOMAIN=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].DomainName")
+    COMMENT=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Comment")
+    CREATED=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].LastModifiedTime" | cut -d'T' -f1)
+
+    printf "${CYAN}║${RESET} %-2s │ %-32s │ %-40s │ %-20s │ %-8s ${CYAN}║${RESET}\n" \
       "$((i+1))" "$ORIGIN" "$DOMAIN" "$COMMENT" "$CREATED"
 done
 
+# 🔚 Pie de la tabla
+echo -e "${BOLD}${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝${RESET}"
+
+# 🔢 Selección de distribución
 echo ""
+while true; do
+    read -p $'\e[1;93m🔢 Seleccione la distribución a eliminar: \e[0m' SELECCION
+    INDEX=$((SELECCION - 1))
 
-# Selección del usuario
-read -p $'\e[1;93m🧩 Ingrese el número de la distribución a eliminar: \e[0m' SELECCION
-INDEX=$((SELECCION - 1))
+    if [[ "$SELECCION" =~ ^[0-9]+$ ]] && [ "$INDEX" -ge 0 ] && [ "$INDEX" -lt "$COUNT" ]; then
+        break
+    else
+        echo -e "${RED}❌ Selección inválida. Intente nuevamente.${RESET}"
+    fi
+done
 
-if ! [[ "$SELECCION" =~ ^[0-9]+$ ]] || [ "$INDEX" -lt 0 ] || [ "$INDEX" -ge "$COUNT" ]; then
-    echo -e "${RED}❌ Selección inválida.${RESET}"
-    exit 1
-fi
-
-# Obtener ID y ETag usando índice
 ID="${IDS[$INDEX]}"
 ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
 
-echo -e "${YELLOW}⚠️ Está por eliminar la distribución seleccionada.${RESET}"
+# ⚠️ Confirmación
+echo -e "${YELLOW}⚠️ Está por eliminar la distribución seleccionada (ID: ${BOLD}${ID}${RESET}${YELLOW}).${RESET}"
 read -p $'\e[1;91m❓ ¿Confirmar eliminación? (s/n): \e[0m' CONFIRMAR
 
 if [[ "${CONFIRMAR,,}" =~ ^(s|si|y|yes)$ ]]; then
@@ -106,11 +114,14 @@ if [[ "${CONFIRMAR,,}" =~ ^(s|si|y|yes)$ ]]; then
         echo -e "${RED}❌ Error al eliminar la distribución.${RESET}"
     fi
 
-    # Limpiar
+    # 🧹 Limpieza
     rm -f temp-config.json disabled-config.json
 else
     echo -e "${BLUE}🔁 Operación cancelada.${RESET}"
 fi
 
 divider
-echo -e "${BOLD}${CYAN}🧼 Gracias por usar el eliminador de distribuciones CF.${RESET}"
+echo -e "${MAGENTA}🧼 Gracias por usar el eliminador de distribuciones CF.${RESET}"
+
+# 🗑️ Autodestrucción del script
+rm -- "$0"
