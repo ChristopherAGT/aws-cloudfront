@@ -3,7 +3,7 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║        ❌ ELIMINADOR DE DISTRIBUCIONES CLOUDFRONT                  ║
+# ║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
@@ -22,7 +22,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT                ║"
+echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -89,7 +89,7 @@ echo ""
 
 # Selección válida del usuario
 while true; do
-    read -p $'\e[1;93m🧩 seleccione la distribución que desea eliminar: \e[0m' SELECCION
+    read -p $'\e[1;93m🧩 Seleccione la distribución que desea eliminar: \e[0m' SELECCION
     INDEX=$((SELECCION - 1))
     if [[ "$SELECCION" =~ ^[0-9]+$ ]] && [ "$INDEX" -ge 0 ] && [ "$INDEX" -lt "$COUNT" ]; then
         break
@@ -112,28 +112,26 @@ while true; do
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
         # Desactivar la distribución correctamente
-aws cloudfront get-distribution-config --id "$ID" > temp-config.json
+        aws cloudfront get-distribution-config --id "$ID" > temp-config.json
+        jq '.DistributionConfig |= (.Enabled = false)' temp-config.json > disabled-config.json
 
-jq '.DistributionConfig |= (.Enabled = false)' temp-config.json > disabled-config.json
+        aws cloudfront update-distribution \
+            --id "$ID" \
+            --if-match "$ETAG" \
+            --distribution-config file://disabled-config.json > /dev/null
 
-aws cloudfront update-distribution \
-    --id "$ID" \
-    --if-match "$ETAG" \
-    --distribution-config file://disabled-config.json > /dev/null
-    
-        echo -e "${BLUE}⌛ Esperando propagación (desactivación)...${RESET}"
-
-        # Bucle para esperar que la distribución se desactive
+        # Bucle con spinner mientras se espera la desactivación
+        i=0
+        sp='|/-\'
         while true; do
             STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
             if [[ "$STATUS" == "false" ]]; then
                 break
             fi
-            echo -ne "${BLUE}... esperando que se desactive${RESET}\r"
-            sleep 5
+            printf "\r${BLUE}⌛ Esperando que se desactive... ${sp:i++%${#sp}:1}${RESET}"
+            sleep 1
         done
-
-        echo -e "${GREEN}✅ Distribución desactivada. Procediendo a eliminar...${RESET}"
+        printf "\r${GREEN}✅ Distribución desactivada. Procediendo a eliminar...        ${RESET}\n"
 
         NEW_ETAG=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.ETag')
 
