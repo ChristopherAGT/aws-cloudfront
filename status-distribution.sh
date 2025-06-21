@@ -21,7 +21,7 @@ divider() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT2                     ║"
+echo "║       📊 ESTADO DE DISTRIBUCIONES - CLOUDFRONT                      ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -36,31 +36,31 @@ divider
 echo -e "${BOLD}${CYAN}🔍 Obteniendo lista de distribuciones activas...${RESET}"
 divider
 
-# 📥 Obtener lista de distribuciones con manejo de errores
+# 📥 Obtener lista completa con manejo de errores
 RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
 
-# ❌ Verificar si la salida está vacía o es 'null'
-if [[ -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
+# ❌ Validar si hubo un fallo real al ejecutar AWS
+if [[ $? -ne 0 || -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
     echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica tu conexión, credenciales o permisos de AWS.${RESET}"
     exit 1
 fi
 
-# 📊 Extraer cantidad de distribuciones de forma segura
-COUNT=$(echo "$RAW_OUTPUT" | jq -r '.DistributionList.Quantity // 0')
+# 📊 Obtener la cantidad segura de distribuciones
+COUNT=$(echo "$RAW_OUTPUT" | jq -r '.DistributionList.Quantity')
 
-# 🧪 Validar que COUNT sea numérico
+# ✅ Si el campo no es un número válido, error
 if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
-    echo -e "${RED}❌ Error al interpretar el número de distribuciones.${RESET}"
+    echo -e "${RED}❌ Error al interpretar la cantidad de distribuciones.${RESET}"
     exit 1
 fi
 
-# ⚠️ Mostrar mensaje si no hay distribuciones
+# ⚠️ Si simplemente no hay distribuciones, mensaje amable
 if [ "$COUNT" -eq 0 ]; then
     echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
 
-# ✅ Si hay distribuciones, guardar para procesamiento posterior
+# ✅ Si hay distribuciones, continuar normalmente
 DISTROS="$RAW_OUTPUT"
 
 # 📋 Cabecera de tabla
