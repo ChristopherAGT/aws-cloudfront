@@ -111,7 +111,7 @@ while true; do
     CONFIRMAR=$(echo "$CONFIRMAR" | tr '[:upper:]' '[:lower:]')
 
     if [[ "$CONFIRMAR" == "s" ]]; then
-        echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
+        echo -e "${BLUE}⛔️ Desactivando distribución antes de eliminar...${RESET}"
 
         # Modificar Enabled a false en DistributionConfig y guardar sólo DistributionConfig en disabled-config.json
         jq '.DistributionConfig | .Enabled = false' temp-config.json > disabled-config.json
