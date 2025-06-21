@@ -3,7 +3,7 @@
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT       ║
+# ║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
@@ -20,7 +20,6 @@ divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
-# Spinner para esperar
 spinner() {
     local pid=$1
     local delay=0.1
@@ -36,7 +35,7 @@ spinner() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT       ║"
+echo "║        ❌ ELIMINADOR DE DISTRIBUCIONES - CLOUDFRONT      ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -66,7 +65,7 @@ printf "${BOLD}${CYAN}║ %-2s │ %-32s │ %-40s │ %-21s │ %-8s ║${RESET
   "Nº" "Origen actual" "Dominio CloudFront" "Descripción" "Estado"
 echo -e "${BOLD}${CYAN}╟───────────────────────────────────────────────────────────────────────────────────────────────────╢${RESET}"
 
-# 📄 Mostrar las filas de la tabla
+# Mostrar las filas de la tabla
 declare -a IDS
 for ((i = 0; i < COUNT; i++)); do
     ID=$(echo "$DISTROS" | jq -r ".DistributionList.Items[$i].Id")
@@ -120,28 +119,27 @@ while true; do
     if [[ "$CONFIRMAR" == "s" ]]; then
         echo -e "${BLUE}⏳ Desactivando distribución antes de eliminar...${RESET}"
 
-        # Obtener configuración completa
+        # Obtener configuración actual
         aws cloudfront get-distribution-config --id "$ID" > temp-config.json
 
-        # Extraer y modificar sólo DistributionConfig
-        jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp-config.json > disabled-config.json
+        # Eliminar 'ETag' y otros campos no válidos para actualización
+        jq '.DistributionConfig.Enabled = false' temp-config.json > disabled-config.json
 
-        # Actualizar distribución desactivada
+        # Actualizar distribución para desactivar
         aws cloudfront update-distribution \
             --id "$ID" \
             --if-match "$ETAG" \
             --distribution-config file://disabled-config.json > /dev/null
 
-        # Esperar que la distribución se desactive con spinner
-        echo ""
+        # Bucle para esperar que la distribución se desactive con spinner
         (
-          while true; do
-            STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
-            if [[ "$STATUS" == "false" ]]; then
-                break
-            fi
-            sleep 3
-          done
+            while true; do
+                STATUS=$(aws cloudfront get-distribution-config --id "$ID" | jq -r '.DistributionConfig.Enabled')
+                if [[ "$STATUS" == "false" ]]; then
+                    break
+                fi
+                sleep 3
+            done
         ) &
         spinner $!
 
@@ -152,10 +150,10 @@ while true; do
         if aws cloudfront delete-distribution --id "$ID" --if-match "$NEW_ETAG"; then
             echo -e "${GREEN}✅ Distribución eliminada exitosamente.${RESET}"
         else
-            echo -e "${RED}❌ Error al eliminar la distribución.${RESET}"
+            echo -e "${RED}❌ Error al eliminar la distribución. Asegúrese que la distribución esté deshabilitada y espere unos minutos antes de intentar nuevamente.${RESET}"
         fi
 
-        # Limpieza de archivos temporales
+        # Limpieza
         rm -f temp-config.json disabled-config.json
         break
 
