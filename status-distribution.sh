@@ -39,28 +39,28 @@ divider
 # 📥 Obtener lista de distribuciones con manejo de errores
 RAW_OUTPUT=$(aws cloudfront list-distributions --output json 2>/dev/null)
 
-# 🔍 Verificar si ocurrió un error real (salida vacía o null)
+# ❌ Verificar si la salida está vacía o es 'null'
 if [[ -z "$RAW_OUTPUT" || "$RAW_OUTPUT" == "null" ]]; then
     echo -e "${RED}❌ Error al obtener la lista de distribuciones. Verifica tu conexión, credenciales o permisos de AWS.${RESET}"
     exit 1
 fi
 
-# 📊 Intentar contar las distribuciones (puede ser 0)
-COUNT=$(echo "$RAW_OUTPUT" | jq '.DistributionList.Items | length' 2>/dev/null)
+# 📊 Extraer cantidad de distribuciones de forma segura
+COUNT=$(echo "$RAW_OUTPUT" | jq -r '.DistributionList.Quantity // 0')
 
-# 🧪 Verificar que COUNT sea numérico
+# 🧪 Validar que COUNT sea numérico
 if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
     echo -e "${RED}❌ Error al interpretar el número de distribuciones.${RESET}"
     exit 1
 fi
 
-# ⚠️ Validar si no hay distribuciones
-if [[ "$COUNT" -eq 0 ]]; then
+# ⚠️ Mostrar mensaje si no hay distribuciones
+if [ "$COUNT" -eq 0 ]; then
     echo -e "${YELLOW}⚠️ No se encontraron distribuciones activas en tu cuenta.${RESET}"
     exit 0
 fi
 
-# ✅ Si llegó hasta aquí, continuar con el procesamiento normal
+# ✅ Si hay distribuciones, guardar para procesamiento posterior
 DISTROS="$RAW_OUTPUT"
 
 # 📋 Cabecera de tabla
