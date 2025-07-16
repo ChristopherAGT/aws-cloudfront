@@ -98,10 +98,28 @@ echo -e "$DIVIDER"
 echo -e "${YELLOW}📌 Copia ambos valores en tu proveedor de DNS (ej. Cloudflare)${RESET}"
 echo -e "$DIVIDER"
 
-# === Espera por la validación del certificado ===
-echo -e "\n⏳ Esperando validación de dominio. Esto puede tardar varios minutos..."
+# === Pregunta para continuar ===
+while true; do
+    echo ""
+    read -p "$(echo -e "${CYAN}🛠️  ¿Ya realizaste la configuración DNS (CNAME) en tu proveedor? (s/n): ${RESET}")" ANSWER
 
-# Proceso de verificación en segundo plano
+    case "$ANSWER" in
+        [sS])
+            echo -e "${GREEN}✅ Continuando con la validación del certificado...${RESET}"
+            break
+            ;;
+        [nN])
+            echo -e "${YELLOW}⏳ Tómate tu tiempo. Te esperamos para continuar cuando estés listo.${RESET}"
+            ;;
+        *)
+            echo -e "${RED}❌ Respuesta inválida. Escribe 's' para sí o 'n' para no.${RESET}"
+            ;;
+    esac
+done
+
+# === Validación del certificado (con spinner) ===
+echo -e "\n⏳ Iniciando verificación de emisión del certificado..."
+
 (
     for i in {1..30}; do
         STATUS=$(aws acm describe-certificate \
@@ -118,14 +136,12 @@ echo -e "\n⏳ Esperando validación de dominio. Esto puede tardar varios minuto
 ) &
 CHECK_PID=$!
 
-# Spinner en proceso paralelo
+# Spinner en segundo plano
 start_spinner &
 SPINNER_PID=$!
 
-# Espera del proceso principal
+# Esperar al proceso de validación
 wait $CHECK_PID
-
-# Detener el spinner
 stop_spinner
 
 # Verificar estado final del certificado
