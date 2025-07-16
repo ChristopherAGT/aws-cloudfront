@@ -3,20 +3,16 @@
 # Solicita el dominio al usuario
 read -p "Ingresa el dominio raíz (ej: abysscore.xyz): " DOMAIN
 
-# Verifica si se ingresó algo
 if [[ -z "$DOMAIN" ]]; then
     echo "❌ Error: No ingresaste un dominio."
     exit 1
 fi
 
-# Construye el dominio con wildcard
 WILDCARD="*.$DOMAIN"
-
-# Región para el certificado (us-east-1 es común, especialmente para CloudFront)
 REGION="us-east-1"
 
-# Solicita el certificado
 echo "🚀 Solicitando certificado para $WILDCARD..."
+
 CERT_ARN=$(aws acm request-certificate \
   --domain-name "$WILDCARD" \
   --validation-method DNS \
@@ -31,28 +27,50 @@ fi
 
 echo "✅ Certificado solicitado con ARN:"
 echo "$CERT_ARN"
-echo "⏳ Esperando 10 segundos antes de recuperar la información de validación..."
+echo "⏳ Esperando unos segundos antes de mostrar los datos de validación..."
 sleep 10
 
-# Obtener los datos de validación DNS
 VALIDATION=$(aws acm describe-certificate \
   --certificate-arn "$CERT_ARN" \
   --region "$REGION" \
   --query "Certificate.DomainValidationOptions[0].ResourceRecord" \
   --output text)
 
-# Separar los valores
 CNAME_NAME=$(echo "$VALIDATION" | awk '{print $1}')
-CNAME_TYPE=$(echo "$VALIDATION" | awk '{print $2}')
 CNAME_VALUE=$(echo "$VALIDATION" | awk '{print $3}')
 
-# Mostrar en formato para Cloudflare
 echo ""
-echo "🧾 Añade el siguiente registro en Cloudflare para validar tu certificado:"
+echo "🧾 Añade el siguiente CNAME en Cloudflare:"
 echo "======================================================================="
 printf "%-20s | %-60s\n" "Nombre (CNAME)" "Valor (CNAME)"
 echo "---------------------+--------------------------------------------------------------"
 printf "%-20s | %-60s\n" "$CNAME_NAME" "$CNAME_VALUE"
 echo "======================================================================="
 echo ""
-echo "✅ Una vez añadido, ACM validará automáticamente tu dominio."
+echo "⏳ Esperando validación de dominio (esto puede tardar varios minutos)..."
+
+# Esperar a que el certificado esté en estado ISSUED
+for i in {1..30}; do
+    STATUS=$(aws acm describe-certificate \
+      --certificate-arn "$CERT_ARN" \
+      --region "$REGION" \
+      --query "Certificate.Status" \
+      --output text)
+
+    echo "🔄 Estado actual del certificado: $STATUS"
+
+    if [[ "$STATUS" == "ISSUED" ]]; then
+        echo "✅ El certificado ha sido emitido exitosamente."
+        break
+    elif [[ "$STATUS" == "FAILED" ]]; then
+        echo "❌ La solicitud del certificado falló. Revisa el dominio o el CNAME."
+        exit 1
+    fi
+
+    sleep 30  # Espera 30 segundos antes de verificar otra vez
+done
+
+if [[ "$STATUS" != "ISSUED" ]]; then
+    echo "⚠️ El certificado aún no se ha emitido después de varios intentos. Verifica el CNAME en Cloudflare."
+    exit 1
+fi
