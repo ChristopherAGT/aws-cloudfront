@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# === Estilo visual ===
+# === Estilo de colores con tput ===
 GREEN=$(tput setaf 2)
 RED=$(tput setaf 1)
 YELLOW=$(tput setaf 3)
@@ -14,11 +14,13 @@ print_line() {
     echo "${MAGENTA}-------------------------------------------------------------------------------${RESET}"
 }
 
-spinner() {
-    local pid=$1
+# === Spinner controlado ===
+start_spinner() {
     local delay=0.1
     local spinstr='|/-\'
-    while kill -0 "$pid" 2>/dev/null; do
+    SPINNER_ACTIVE=true
+
+    while $SPINNER_ACTIVE; do
         local temp=${spinstr#?}
         printf " [%c] ${YELLOW}Esperando actualización del estado del certificado...${RESET}  " "$spinstr"
         spinstr=$temp${spinstr%"$temp"}
@@ -27,7 +29,13 @@ spinner() {
     done
 }
 
-# === Inicio del script ===
+stop_spinner() {
+    SPINNER_ACTIVE=false
+    wait $SPINNER_PID 2>/dev/null
+    echo -ne "\r"
+}
+
+# === Inicio ===
 echo -e "${BOLD}${CYAN}🚀 Solicitud de certificado SSL ACM (Wildcard)${RESET}"
 print_line
 
@@ -73,17 +81,27 @@ VALIDATION=$(aws acm describe-certificate \
 CNAME_NAME=$(echo "$VALIDATION" | awk '{print $1}')
 CNAME_VALUE=$(echo "$VALIDATION" | awk '{print $3}')
 
-print_line
-echo -e "${BOLD}${YELLOW}🧾 Añade el siguiente CNAME en tu proveedor DNS (ej. Cloudflare):${RESET}"
-print_line
-printf "%-25s | %-60s\n" "${BOLD}Nombre (CNAME)${RESET}" "${BOLD}Valor (CNAME)${RESET}"
-echo "--------------------------+---------------------------------------------------------------"
-printf "%-25s | %-60s\n" "$CNAME_NAME" "$CNAME_VALUE"
-print_line
+# === Sección CNAME con diseño mejorado ===
+DIVIDER="${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
+echo -e "\n$DIVIDER"
+echo -e "${BOLD}${GREEN}🔐  Registro DNS para validación del certificado (CNAME)${RESET}"
+echo -e "$DIVIDER"
+
+echo -e "${BOLD}${BLUE}📛 Nombre (CNAME):${RESET}"
+echo -e "   ${CNAME_NAME}\n"
+
+echo -e "${BOLD}${BLUE}📥 Valor (CNAME):${RESET}"
+echo -e "   ${CNAME_VALUE}\n"
+
+echo -e "$DIVIDER"
+echo -e "${YELLOW}📌 Copia ambos valores en tu proveedor de DNS (ej. Cloudflare)${RESET}"
+echo -e "$DIVIDER"
+
+# === Espera por la validación del certificado ===
 echo -e "\n⏳ Esperando validación de dominio. Esto puede tardar varios minutos..."
 
-# Espera con spinner mientras cambia a estado ISSUED
+# Proceso de verificación en segundo plano
 (
     for i in {1..30}; do
         STATUS=$(aws acm describe-certificate \
@@ -98,16 +116,24 @@ echo -e "\n⏳ Esperando validación de dominio. Esto puede tardar varios minuto
         sleep 10
     done
 ) &
-spinner $!
+CHECK_PID=$!
 
-# Verifica el resultado final
+# Spinner en proceso paralelo
+start_spinner &
+SPINNER_PID=$!
+
+# Espera del proceso principal
+wait $CHECK_PID
+
+# Detener el spinner
+stop_spinner
+
+# Verificar estado final del certificado
 STATUS=$(aws acm describe-certificate \
   --certificate-arn "$CERT_ARN" \
   --region "$REGION" \
   --query "Certificate.Status" \
   --output text)
-
-echo -ne "\r"
 
 if [[ "$STATUS" == "ISSUED" ]]; then
     echo -e "${GREEN}✅ El certificado ha sido emitido exitosamente.${RESET}"
