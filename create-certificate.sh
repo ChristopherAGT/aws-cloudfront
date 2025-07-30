@@ -120,7 +120,8 @@ done
 # === Validación del certificado (con spinner) ===
 echo -e "\n⏳ Iniciando verificación de emisión del certificado..."
 
-(
+# Lanzar el proceso principal en segundo plano y guardar su PID
+check_cert_status() {
     for i in {1..30}; do
         STATUS=$(aws acm describe-certificate \
           --certificate-arn "$CERT_ARN" \
@@ -133,14 +134,13 @@ echo -e "\n⏳ Iniciando verificación de emisión del certificado..."
         fi
         sleep 10
     done
-) &
-CHECK_PID=$!
+}
+check_cert_status & CHECK_PID=$!
 
-# Spinner en segundo plano
-start_spinner &
-SPINNER_PID=$!
+# Lanzar el spinner después de que el proceso ya está corriendo
+start_spinner & SPINNER_PID=$!
 
-# Esperar al proceso de validación
+# Esperar que el proceso de validación termine
 wait $CHECK_PID
 stop_spinner
 
