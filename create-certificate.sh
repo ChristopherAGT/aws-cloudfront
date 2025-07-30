@@ -14,30 +14,6 @@ print_line() {
     echo "${MAGENTA}-------------------------------------------------------------------------------${RESET}"
 }
 
-# === Función para copiar al portapapeles según SO ===
-copy_to_clipboard() {
-    local text="$1"
-    if command -v pbcopy &>/dev/null; then
-        # macOS
-        echo -n "$text" | pbcopy
-        return $?
-    elif command -v xclip &>/dev/null; then
-        # Linux con xclip
-        echo -n "$text" | xclip -selection clipboard
-        return $?
-    elif command -v xsel &>/dev/null; then
-        # Linux con xsel
-        echo -n "$text" | xsel --clipboard --input
-        return $?
-    elif grep -q Microsoft /proc/version 2>/dev/null; then
-        # WSL (Windows Subsystem for Linux)
-        echo -n "$text" | clip.exe
-        return $?
-    else
-        return 1
-    fi
-}
-
 # === Spinner controlado ===
 start_spinner() {
     local delay=0.1
@@ -119,42 +95,8 @@ echo -e "${BOLD}${BLUE}📥 Valor (CNAME):${RESET}"
 echo -e "   ${CNAME_VALUE}\n"
 
 echo -e "$DIVIDER"
-echo -e "${YELLOW}📌 Copia ambos valores en tu proveedor de DNS (ej. Cloudflare)${RESET}"
+echo -e "${YELLOW}📌 Agrega estos valores en la configuración DNS de tu dominio.${RESET}"
 echo -e "$DIVIDER"
-
-# Preguntar al usuario si quiere copiar el Nombre o el Valor al portapapeles
-while true; do
-    echo ""
-    echo -e "${CYAN}¿Qué deseas copiar al portapapeles?${RESET}"
-    echo "1) Nombre (CNAME)"
-    echo "2) Valor (CNAME)"
-    echo "3) Nada, continuar"
-    read -p "Elige una opción (1/2/3): " OPCION
-
-    case "$OPCION" in
-        1)
-            if copy_to_clipboard "$CNAME_NAME"; then
-                echo -e "${GREEN}📋 Nombre (CNAME) copiado al portapapeles.${RESET}"
-            else
-                echo -e "${RED}❌ No se pudo copiar al portapapeles. Copia manualmente: $CNAME_NAME${RESET}"
-            fi
-            ;;
-        2)
-            if copy_to_clipboard "$CNAME_VALUE"; then
-                echo -e "${GREEN}📋 Valor (CNAME) copiado al portapapeles.${RESET}"
-            else
-                echo -e "${RED}❌ No se pudo copiar al portapapeles. Copia manualmente: $CNAME_VALUE${RESET}"
-            fi
-            ;;
-        3)
-            echo "Continuando sin copiar..."
-            break
-            ;;
-        *)
-            echo -e "${RED}❌ Opción inválida. Por favor, ingresa 1, 2 o 3.${RESET}"
-            ;;
-    esac
-done
 
 # === Pregunta para continuar ===
 while true; do
