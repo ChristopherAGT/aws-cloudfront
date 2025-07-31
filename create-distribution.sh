@@ -3,7 +3,7 @@
 clear
 
 # ╔════════════════════════════════════════════════════════════╗
-# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT ║
+# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT            ║
 # ╚════════════════════════════════════════════════════════════╝
 
 # Colores
@@ -37,7 +37,7 @@ divider() {
 # Encabezado inicial
 echo -e "${CYAN}"
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT ║"
+echo "║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT            ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 sleep 1
@@ -123,10 +123,10 @@ else
     exit 1
 fi
 divider
+
 # Preguntar por descripción
 read -p $'\e[1;95m📝 Descripción para la distribución [Default: Cloudfront_Domain1]: \e[0m' DESCRIPTION
 DESCRIPTION="${DESCRIPTION:-Cloudfront_Domain_1}"
-divider
 
 # Crear archivo de configuración JSON
 divider
