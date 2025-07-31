@@ -192,7 +192,6 @@ echo -e "${BOLD}${CYAN}📡 Enviando configuración a CloudFront...${RESET}"
 if aws cloudfront create-distribution --distribution-config file://config_cloudfront.json > salida_cloudfront.json 2>error.log; then
     DOMAIN=$(jq -r '.Distribution.DomainName' salida_cloudfront.json)
     echo -e "${GREEN}🎉 Distribución creada exitosamente.${RESET}"
-    echo -e "${MAGENTA}🔗 URL de acceso: ${BOLD}https://${DOMAIN}${RESET}"
 else
     echo -e "${RED}💥 Error al crear la distribución.${RESET}"
     echo -e "${YELLOW}🪵 Detalles del error:${RESET}"
