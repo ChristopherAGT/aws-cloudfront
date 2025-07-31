@@ -6,7 +6,7 @@ clear
 # ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT ║
 # ╚════════════════════════════════════════════════════════════╝
 
-# Colores brillantes + negrita
+# Colores
 RED='\e[1;91m'
 GREEN='\e[1;92m'
 YELLOW='\e[1;93m'
@@ -16,121 +16,119 @@ CYAN='\e[1;96m'
 BOLD='\e[1m'
 RESET='\e[0m'
 
-# Spinner animado para tareas en segundo plano
+# Spinner
 spinner() {
-    local pid=$1
+    local pid=$!
     local delay=0.15
     local spinstr='|/-\\'
-    while kill -0 $pid 2>/dev/null; do
-        local temp=${spinstr#?}
+    while kill -0 "$pid" 2>/dev/null; do
         printf " [%c]  " "$spinstr"
-        spinstr=$temp${spinstr%"$temp"}
+        spinstr=${spinstr#?}${spinstr%"$spinstr"}
         sleep $delay
         printf "\b\b\b\b\b\b"
     done
-    wait $pid 2>/dev/null
+    wait "$pid" 2>/dev/null
 }
 
 divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
-# Encabezado
+# Encabezado inicial
 echo -e "${CYAN}"
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
-sleep 0.5
+sleep 1
+
 echo -e "${MAGENTA}🧠 Preparando entorno para crear tu CDN...${RESET}"
 sleep 1
 
-# Validar AWS CLI
 divider
-echo -e "${BOLD}${CYAN}🔍 PASO 1: Comprobando entorno...${RESET}"
+echo -e "${BOLD}${CYAN}🔧 Verificando entorno (CLI, jq, dependencias)...${RESET}"
 divider
 
-if ! command -v aws &> /dev/null; then
-    echo -e "${RED}❌ AWS CLI no está instalado. Instalando...${RESET}"
-    (sudo apt update -qq && sudo apt install -y awscli) & 
-    spinner $!
+# Validar herramientas necesarias
+check_command() {
+    local cmd="$1"
+    local pkg="$2"
+    if ! command -v "$cmd" &> /dev/null; then
+        echo -e "${YELLOW}⚙️ Instalando ${pkg}...${RESET}"
+        (sudo apt-get update -qq && sudo apt-get install -y "$pkg") & spinner
+    else
+        echo -e "${GREEN}✔️ ${pkg} instalado.${RESET}"
+    fi
+}
+
+check_command aws awscli
+check_command jq jq
+
+divider
+echo -e "${BOLD}${CYAN}🔐 Autenticación con AWS${RESET}"
+divider
+
+# Verificar credenciales
+if aws sts get-caller-identity &> /dev/null; then
+    echo -e "${GREEN}🔓 Credenciales válidas detectadas.${RESET}"
 else
-    echo -e "${GREEN}✔️ AWS CLI está instalado.${RESET}"
-fi
-
-# Verificar credenciales AWS
-divider
-echo -e "${BOLD}${CYAN}🔐 PASO 2: Verificando credenciales de AWS...${RESET}"
-divider
-
-if ! aws sts get-caller-identity --output json > /dev/null 2>&1; then
-    echo -e "${YELLOW}⚠️ No se detectaron credenciales válidas. Ejecutando 'aws configure'...${RESET}"
+    echo -e "${YELLOW}🔑 No se encontraron credenciales válidas. Ejecutando aws configure...${RESET}"
     aws configure
-    if ! aws sts get-caller-identity --output json > /dev/null 2>&1; then
-        echo -e "${RED}❌ No se pudieron configurar las credenciales. Abortando...${RESET}"
+    if ! aws sts get-caller-identity &> /dev/null; then
+        echo -e "${RED}❌ Credenciales inválidas. Abortando.${RESET}"
         exit 1
     fi
-else
-    echo -e "${GREEN}🔐🔓 Credenciales de AWS válidas detectadas.${RESET}"
 fi
 
-# Verificar jq
-if ! command -v jq &> /dev/null; then
-    echo -e "${YELLOW}📦 Instalando jq...${RESET}"
-    (sudo apt update -qq && sudo apt install -y jq) &
-    spinner $!
-fi
+# Paso: Ingreso de dominio
+divider
+echo -e "${BOLD}${CYAN}🌐 Configuración del dominio de origen${RESET}"
+divider
 
-# Ingreso de dominio
-divider
-echo -e "${BOLD}${CYAN}🌐 PASO 3: Ingreso del dominio de origen${RESET}"
-divider
 while true; do
-    read -p $'\e[1;94m🌐 Ingrese el dominio de origen (ej: tu.dominio.com): \e[0m' ORIGIN_DOMAIN_RAW
-    ORIGIN_DOMAIN=$(echo "$ORIGIN_DOMAIN_RAW" | tr '[:upper:]' '[:lower:]' | xargs)
+    read -p $'\e[1;94m🌍 Ingrese el dominio de origen (ej: midominio.com): \e[0m' ORIGIN_DOMAIN
+    ORIGIN_DOMAIN=$(echo "$ORIGIN_DOMAIN" | tr '[:upper:]' '[:lower:]' | xargs)
 
-    if [[ -z "$ORIGIN_DOMAIN" || "$ORIGIN_DOMAIN" =~ ^(http|https):// ]]; then
-        echo -e "${RED}❌ Dominio inválido. No incluya http:// ni https:// y no lo deje vacío.${RESET}"
+    if [[ -z "$ORIGIN_DOMAIN" || "$ORIGIN_DOMAIN" =~ ^(https?://) ]]; then
+        echo -e "${RED}❌ Dominio inválido. No incluya http(s)://${RESET}"
         continue
     fi
 
     if ! [[ "$ORIGIN_DOMAIN" =~ ^[a-z0-9.-]+$ ]]; then
-        echo -e "${RED}❌ Dominio inválido. Solo letras minúsculas, números, guiones y puntos.${RESET}"
+        echo -e "${RED}❌ Dominio inválido. Solo letras, números, puntos y guiones.${RESET}"
         continue
     fi
 
-    echo -e "${YELLOW}🔎 Usando el dominio: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
-    read -p $'\e[1;93m➡️ ¿Confirmar dominio? (s/n): \e[0m' CONFIRMAR
-    [[ "${CONFIRMAR,,}" =~ ^(s|si|y|yes)$ ]] && break
+    echo -e "${YELLOW}🔎 Dominio elegido: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
+    read -p $'\e[1;93m✅ ¿Confirmar? (s/n): \e[0m' CONFIRMAR
+    [[ "${CONFIRMAR,,}" =~ ^(s|y|si|yes)$ ]] && break
 done
 
-ROOT_DOMAIN=$(echo "$ORIGIN_DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+# Generar nombre de referencia
+REFERENCE="cf-ui-$(date +%s)"
+ROOT_DOMAIN=$(echo "$ORIGIN_DOMAIN" | awk -F. '{n=split($0,a,"."); if(n>=2) print a[n-1]"."a[n]; else print $0}')
 
-# Buscar certificado en ACM que coincida
+# Buscar certificado coincidente
 divider
-echo -e "${BOLD}${CYAN}🔐 PASO 4: Buscando certificado SSL para ${ROOT_DOMAIN}...${RESET}"
-divider
+echo -e "${BOLD}${CYAN}🔒 Buscando certificado SSL para ${ROOT_DOMAIN}...${RESET}"
 
-CERT_ARN=$(aws acm list-certificates --certificate-statuses ISSUED \
-    --query "CertificateSummaryList[?DomainName=='${ROOT_DOMAIN}' || ends_with(DomainName, '.${ROOT_DOMAIN}')].CertificateArn" \
-    --output text)
+CERT_ARN=$(aws acm list-certificates --region us-east-1 --output json | \
+  jq -r --arg domain "$ROOT_DOMAIN" '.CertificateSummaryList[] | select(.DomainName | test($domain+"$")) | .CertificateArn' | head -n 1)
 
-if [[ -z "$CERT_ARN" ]]; then
-    echo -e "${RED}❌ No se encontró certificado válido para ${ROOT_DOMAIN}.${RESET}"
-    exit 1
+if [[ -n "$CERT_ARN" ]]; then
+    echo -e "${GREEN}✔️ Certificado encontrado: ${CERT_ARN}${RESET}"
 else
-    echo -e "${GREEN}✔️ Certificado encontrado: ${BOLD}${CERT_ARN}${RESET}"
+    echo -e "${RED}❌ No se encontró certificado para el dominio raíz. Abortando.${RESET}"
+    exit 1
 fi
 
-# Descripción de la distribución
-read -p $'\e[1;95m📝 Ingrese una descripción para la distribución [Default: Domain_1]: \e[0m' DESCRIPTION
-DESCRIPTION=$(echo "$DESCRIPTION" | xargs)
-[ -z "$DESCRIPTION" ] && DESCRIPTION="Domain_1"
-REFERENCE="cf-ui-$(date +%s)"
+# Preguntar por descripción
+read -p $'\e[1;95m📝 Descripción para la distribución [Default: CloudFront Auto]: \e[0m' DESCRIPTION
+DESCRIPTION="${DESCRIPTION:-CloudFront Auto}"
 
 # Crear archivo de configuración JSON
 divider
-echo -e "${BOLD}${CYAN}🛠️ PASO 5: Generando configuración...${RESET}"
+echo -e "${BOLD}${CYAN}🛠️ Generando configuración de distribución...${RESET}"
 
 cat > config_cloudfront.json <<EOF
 {
@@ -180,40 +178,40 @@ cat > config_cloudfront.json <<EOF
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
     "SSLSupportMethod": "sni-only",
-    "MinimumProtocolVersion": "TLSv1.2_2021",
-    "Certificate": "${CERT_ARN}",
-    "CertificateSource": "acm"
+    "MinimumProtocolVersion": "TLSv1.2_2021"
   }
 }
 EOF
 
-echo -e "${GREEN}✔️ Archivo config_cloudfront.json generado.${RESET}"
+echo -e "${GREEN}✔️ Configuración guardada en config_cloudfront.json${RESET}"
 
 # Crear la distribución
 divider
-echo -e "${BOLD}${CYAN}📡 PASO 6: Creando distribución en CloudFront...${RESET}"
+echo -e "${BOLD}${CYAN}📡 Enviando configuración a CloudFront...${RESET}"
+
 if aws cloudfront create-distribution --distribution-config file://config_cloudfront.json > salida_cloudfront.json 2>error.log; then
     DOMAIN=$(jq -r '.Distribution.DomainName' salida_cloudfront.json)
-    echo -e "${GREEN}\n🎯 ¡Distribución creada exitosamente!${RESET}"
-    echo -e "${MAGENTA}🌍 URL de acceso: ${BOLD}https://${DOMAIN}${RESET}"
+    echo -e "${GREEN}🎉 Distribución creada exitosamente.${RESET}"
+    echo -e "${MAGENTA}🔗 URL de acceso: ${BOLD}https://${DOMAIN}${RESET}"
 else
     echo -e "${RED}💥 Error al crear la distribución.${RESET}"
-    echo -e "${YELLOW}📄 Ver detalles en: ${BOLD}error.log${RESET}"
+    echo -e "${YELLOW}🪵 Detalles del error:${RESET}"
     cat error.log
+    exit 1
 fi
 
-# Limpieza
+# Limpieza final
 divider
-echo -e "${BLUE}🗑️ Limpiando archivos temporales...${RESET}"
+echo -e "${BLUE}🧹 Limpiando archivos temporales...${RESET}"
 rm -f config_cloudfront.json salida_cloudfront.json error.log
-
-# Eliminar script si deseas
-# echo -e "${RED}🧨 Eliminando el script...${RESET}"
-# rm -- "$0"
 
 # Créditos
 divider
-echo -e "${GREEN}✅ Proceso completado.${RESET}"
-echo -e "${MAGENTA}🌐 Dominio: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
-echo -e "${MAGENTA}🔐 Certificado: ${CERT_ARN}${RESET}"
-echo -e "${BOLD}${CYAN}🔧 Créditos a 👾 Christopher Ackerman${RESET}"
+echo -e "${GREEN}✅ Proceso finalizado correctamente.${RESET}"
+divider
+echo -e "${MAGENTA}🔗 URL de acceso: ${BOLD}https://${DOMAIN}${RESET}"
+echo -e "${MAGENTA}🌍 Dominio configurado: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
+echo -e "${MAGENTA}📄 Descripción: ${DESCRIPTION}${RESET}"
+echo -e "${MAGENTA}🔐 Certificado usado: ${CERT_ARN}${RESET}"
+echo -e "${MAGENTA}🕒 Fecha: $(date)${RESET}"
+echo -e "${BOLD}${CYAN}🔧 Script creado por 👾 Christopher Ackerman${RESET}"
