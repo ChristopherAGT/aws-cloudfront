@@ -111,6 +111,7 @@ ROOT_DOMAIN=$(echo "$ORIGIN_DOMAIN" | awk -F. '{n=split($0,a,"."); if(n>=2) prin
 # Buscar certificado coincidente
 divider
 echo -e "${BOLD}${CYAN}🔒 Buscando certificado SSL para ${ROOT_DOMAIN}...${RESET}"
+divider
 
 CERT_ARN=$(aws acm list-certificates --region us-east-1 --output json | \
   jq -r --arg domain "$ROOT_DOMAIN" '.CertificateSummaryList[] | select(.DomainName | test($domain+"$")) | .CertificateArn' | head -n 1)
@@ -121,10 +122,11 @@ else
     echo -e "${RED}❌ No se encontró certificado para el dominio raíz. Abortando.${RESET}"
     exit 1
 fi
-
+divider
 # Preguntar por descripción
-read -p $'\e[1;95m📝 Descripción para la distribución [Default: CloudFront Auto]: \e[0m' DESCRIPTION
-DESCRIPTION="${DESCRIPTION:-CloudFront Auto}"
+read -p $'\e[1;95m📝 Descripción para la distribución [Default: Cloudfront_Domain1]: \e[0m' DESCRIPTION
+DESCRIPTION="${DESCRIPTION:-Cloudfront_Domain_1}"
+divider
 
 # Crear archivo de configuración JSON
 divider
