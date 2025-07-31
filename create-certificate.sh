@@ -40,6 +40,7 @@ start_spinner() {
         sleep $delay
         printf "\r"
     done
+    printf "\r\033[K"
     echo -ne "\r"
 }
 
