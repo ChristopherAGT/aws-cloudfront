@@ -80,25 +80,27 @@ echo -e "${CYAN}$CERT_ARN${RESET}"
 # === Obtener los datos de validación con reintentos ===
 echo -e "\n⏳ Esperando datos de validación del certificado..."
 for i in {1..10}; do
-    VALIDATION=$(aws acm describe-certificate \
+    VALIDATION_JSON=$(aws acm describe-certificate \
         --certificate-arn "$CERT_ARN" \
         --region "$REGION" \
         --query "Certificate.DomainValidationOptions[0].ResourceRecord" \
-        --output text 2>/dev/null || true)
+        --output json 2>/dev/null || true)
 
-    if [[ -n "$VALIDATION" ]]; then
+    CNAME_NAME=$(echo "$VALIDATION_JSON" | jq -r '.Name // empty')
+    CNAME_VALUE=$(echo "$VALIDATION_JSON" | jq -r '.Value // empty')
+
+    if [[ -n "$CNAME_NAME" && -n "$CNAME_VALUE" ]]; then
         break
     fi
+
     sleep 5
 done
 
-if [[ -z "$VALIDATION" ]]; then
-    echo -e "${RED}❌ No se pudieron obtener los datos de validación DNS.${RESET}"
+if [[ -z "$CNAME_NAME" || -z "$CNAME_VALUE" ]]; then
+    echo -e "${RED}❌ No se pudieron obtener los datos de validación DNS (CNAME).${RESET}"
+    echo -e "${YELLOW}ℹ️ Es posible que el certificado aún esté siendo procesado. Intenta de nuevo más tarde.${RESET}"
     exit 1
 fi
-
-CNAME_NAME=$(echo "$VALIDATION" | awk '{print $1}')
-CNAME_VALUE=$(echo "$VALIDATION" | awk '{print $3}')
 
 DIVIDER="${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "\n$DIVIDER"
