@@ -215,4 +215,5 @@ echo -e "${MAGENTA}🌍 Dominio configurado: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
 echo -e "${MAGENTA}📄 Descripción: ${DESCRIPTION}${RESET}"
 echo -e "${MAGENTA}🔐 Certificado usado: ${CERT_ARN}${RESET}"
 echo -e "${MAGENTA}🕒 Fecha: $(date)${RESET}"
+divider
 echo -e "${BOLD}${CYAN}🔧 Script creado por 👾 Christopher Ackerman${RESET}"
