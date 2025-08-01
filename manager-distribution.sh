@@ -15,7 +15,7 @@ fi
 clear
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║            🛠️ AWS CLOUDFRONT MANAGER - PANEL            ║
+# ║            🛠️ AWS CLOUDFRONT MANAGER - PANEL                       ║
 # ╚══════════════════════════════════════════════════════════╝
 
 # Colores
@@ -35,7 +35,7 @@ divider() {
 menu_header() {
     echo -e "${CYAN}"
     echo "╔════════════════════════════════════════════╗"
-    echo "║        🛠️ AWS CLOUDFRONT MANAGER - PANEL        ║"
+    echo "║        🛠️ AWS CLOUDFRONT MANAGER - PANEL           ║"
     echo "╚════════════════════════════════════════════╝"
     divider
 }
