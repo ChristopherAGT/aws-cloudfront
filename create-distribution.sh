@@ -164,7 +164,7 @@ cat > config_cloudfront.json <<EOF
   },
   "DefaultCacheBehavior": {
     "TargetOriginId": "CustomOrigin",
-    "ViewerProtocolPolicy": "redirect-to-https",
+    "ViewerProtocolPolicy": "allow-all",
     "AllowedMethods": {
       "Quantity": 7,
       "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
@@ -173,7 +173,7 @@ cat > config_cloudfront.json <<EOF
         "Items": ["GET", "HEAD"]
       }
     },
-    "Compress": true,
+    "Compress": false,
     "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
     "OriginRequestPolicyId": "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"
   },
