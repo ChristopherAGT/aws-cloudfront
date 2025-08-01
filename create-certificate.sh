@@ -1,5 +1,7 @@
 #!/bin/bash
 
+clear
+
 set -euo pipefail
 
 # === Estilo de colores con tput ===
