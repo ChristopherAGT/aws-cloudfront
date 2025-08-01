@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# ┌────────────────────────────────────────────────────────┐
-# │ Instalación silenciosa como comando global 'aws-manager'         │
-# └────────────────────────────────────────────────────────┘
+# ┌─────────────────────────────────────────────────────────────┐
+# │ Instalación silenciosa como comando global 'aws-manager'   │
+# └─────────────────────────────────────────────────────────────┘
 if [[ "$0" != */aws-manager ]]; then
     SCRIPT_PATH="$HOME/.aws-manager.sh"
     curl -s https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/manager-distribution.sh -o "$SCRIPT_PATH"
@@ -35,7 +35,7 @@ divider() {
 menu_header() {
     echo -e "${CYAN}"
     echo "╔════════════════════════════════════════════╗"
-    echo "║          🛠️ AWS CLOUDFRONT MANAGER - PANEL         ║"
+    echo "║        🛠️ AWS CLOUDFRONT MANAGER - PANEL        ║"
     echo "╚════════════════════════════════════════════╝"
     divider
 }
@@ -43,15 +43,16 @@ menu_header() {
 menu() {
     clear
     menu_header
-    echo -e "${BOLD}${CYAN}● Seleccione una opción:${RESET}"
+    echo -e "${BOLD}${CYAN}🌐 ¿Qué deseas hacer hoy?${RESET}"
     divider
     echo -e "${YELLOW}1.${RESET} 🆕 Crear distribución"
     echo -e "${YELLOW}2.${RESET} 📊 Ver estado de distribuciones"
     echo -e "${YELLOW}3.${RESET} ⚙️ Editar distribución"
     echo -e "${YELLOW}4.${RESET} 🔁 Activar/Desactivar distribución"
     echo -e "${YELLOW}5.${RESET} 🗑️ Eliminar distribución"
-    echo -e "${YELLOW}6.${RESET} 🧹 Remover el panel"
-    echo -e "${YELLOW}7.${RESET} 🚪 Salir"
+    echo -e "${YELLOW}6.${RESET} 🔐 Crear certificado SSL"
+    echo -e "${YELLOW}7.${RESET} 🧹 Remover el panel"
+    echo -e "${YELLOW}8.${RESET} 🚪 Salir"
     divider
 }
 
@@ -88,46 +89,51 @@ remover_panel() {
 
 while true; do
     menu
-    read -rp $'\e[1;93m🔢 Ingrese opción (1-7): \e[0m' opcion
+    read -rp $'\e[1;93m🔢 Ingrese opción (1-8): \e[0m' opcion
 
     case "$opcion" in
         1)
-            echo -e "${BLUE}Ejecutando: Crear distribución...${RESET}"
+            echo -e "${BLUE}🚀 Ejecutando: Crear distribución...${RESET}"
             ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/create-distribution.sh" "create-distribution.sh" true
             pause
             ;;
         2)
-            echo -e "${BLUE}Ejecutando: Ver estado de distribuciones...${RESET}"
+            echo -e "${BLUE}📈 Ejecutando: Ver estado de distribuciones...${RESET}"
             ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/status-distribution.sh" "status-distribution.sh" false
             pause
             ;;
         3)
-            echo -e "${BLUE}Ejecutando: Editar distribución...${RESET}"
+            echo -e "${BLUE}🛠️ Ejecutando: Editar distribución...${RESET}"
             ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/edit-distribution.sh" "edit-distribution.sh" true
             pause
             ;;
         4)
-            echo -e "${BLUE}Ejecutando: Activar/Desactivar distribución...${RESET}"
+            echo -e "${BLUE}🔄 Ejecutando: Activar/Desactivar distribución...${RESET}"
             ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/control-status-distribution.sh" "control-status-distribution.sh" true
             pause
             ;;
         5)
-            echo -e "${BLUE}Ejecutando: Eliminar distribución...${RESET}"
+            echo -e "${BLUE}🗑️ Ejecutando: Eliminar distribución...${RESET}"
             ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/delete-distribution.sh" "delete-distribution.sh" true
             pause
             ;;
         6)
-            remover_panel
-            #pause
+            echo -e "${BLUE}🔐 Ejecutando: Crear certificado SSL...${RESET}"
+            ejecutar_script "https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main/create-certificate.sh" "create-certificate.sh" true
+            pause
             ;;
         7)
+            remover_panel
+            pause
+            ;;
+        8)
             echo -e "${MAGENTA}👋 Saliendo del panel...${RESET}"
             echo -e "${CYAN}💡 Puedes ejecutar nuevamente el panel con el comando: ${BOLD}aws-manager${RESET}"
             echo -e "${GREEN}📝 Créditos a 👾 Christopher Ackerman${RESET}"
             exit 0
             ;;
         *)
-            echo -e "${RED}❌ Opción inválida. Por favor ingresa un número entre 1 y 7.${RESET}"
+            echo -e "${RED}❌ Opción inválida. Por favor ingresa un número entre 1 y 8.${RESET}"
             pause
             ;;
     esac
