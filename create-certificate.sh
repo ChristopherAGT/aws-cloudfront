@@ -50,7 +50,7 @@ print_line
 
 # === Validación de dominio ===
 while true; do
-    read -p "🌐 Ingresa el dominio raíz (ej: abysscore.xyz): " DOMAIN
+    read -p "🌐 Ingresa el dominio raíz (ej: ackerman.com): " DOMAIN
     if [[ -z "$DOMAIN" ]]; then
         echo -e "${RED}❌ Error: El dominio no puede estar vacío.${RESET}"
     else
