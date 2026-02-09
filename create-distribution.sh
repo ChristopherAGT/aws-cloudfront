@@ -31,14 +31,14 @@ spinner() {
 }
 
 divider() {
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
-# Encabezado
+# Encabezado inicial
 echo -e "${CYAN}"
-echo "╔═════════════════════════════════════════════════════════════════════╗"
-echo "║               🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT               ║"
-echo "╚═════════════════════════════════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT            ║"
+echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 sleep 1
 
@@ -49,7 +49,7 @@ divider
 echo -e "${BOLD}${CYAN}🔧 Verificando entorno (CLI, jq, dependencias)...${RESET}"
 divider
 
-# Validar herramientas
+# Validar herramientas necesarias
 check_command() {
     local cmd="$1"
     local pkg="$2"
@@ -68,15 +68,19 @@ divider
 echo -e "${BOLD}${CYAN}🔐 Autenticación con AWS${RESET}"
 divider
 
+# Verificar credenciales
 if aws sts get-caller-identity &> /dev/null; then
     echo -e "${GREEN}🔓 Credenciales válidas detectadas.${RESET}"
 else
     echo -e "${YELLOW}🔑 No se encontraron credenciales válidas. Ejecutando aws configure...${RESET}"
     aws configure
-    aws sts get-caller-identity &> /dev/null || exit 1
+    if ! aws sts get-caller-identity &> /dev/null; then
+        echo -e "${RED}❌ Credenciales inválidas. Abortando.${RESET}"
+        exit 1
+    fi
 fi
 
-# Dominio de origen
+# Paso: Ingreso de dominio
 divider
 echo -e "${BOLD}${CYAN}🌐 Configuración del dominio de origen${RESET}"
 divider
@@ -85,80 +89,48 @@ while true; do
     read -p $'\e[1;94m🌍 Ingrese el dominio de origen (ej: midominio.com): \e[0m' ORIGIN_DOMAIN
     ORIGIN_DOMAIN=$(echo "$ORIGIN_DOMAIN" | tr '[:upper:]' '[:lower:]' | xargs)
 
-    [[ -z "$ORIGIN_DOMAIN" || "$ORIGIN_DOMAIN" =~ ^https?:// ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
-    [[ ! "$ORIGIN_DOMAIN" =~ ^[a-z0-9.-]+$ ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
+    if [[ -z "$ORIGIN_DOMAIN" || "$ORIGIN_DOMAIN" =~ ^(https?://) ]]; then
+        echo -e "${RED}❌ Dominio inválido. No incluya http(s)://${RESET}"
+        continue
+    fi
+
+    if ! [[ "$ORIGIN_DOMAIN" =~ ^[a-z0-9.-]+$ ]]; then
+        echo -e "${RED}❌ Dominio inválido. Solo letras, números, puntos y guiones.${RESET}"
+        continue
+    fi
 
     echo -e "${YELLOW}🔎 Dominio elegido: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
     read -p $'\e[1;93m✅ ¿Confirmar? (s/n): \e[0m' CONFIRMAR
     [[ "${CONFIRMAR,,}" =~ ^(s|y|si|yes)$ ]] && break
 done
 
-# Validar si el CNAME ya está en uso
-check_cname_exists() {
-    local cname="$1"
-    # Buscar en las distribuciones existentes si el CNAME ya está en uso
-    EXISTING_CNAME=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[?contains(@, '${cname}')]].Aliases.Items" --output text)
-
-    if [[ -n "$EXISTING_CNAME" ]]; then
-        echo -e "${RED}❌ El CNAME ${cname} ya está asociado a otra distribución de CloudFront.${RESET}"
-        return 1
-    else
-        return 0
-    fi
-}
-
-# CNAME
-divider
-echo -e "${BOLD}${CYAN}🔗 Configuración del CNAME (Alias)${RESET}"
-divider
-
-while true; do
-    read -p $'\e[1;93m❓ ¿Desea usar el mismo dominio como CNAME? (s/n): \e[0m' USE_SAME_CNAME
-
-    if [[ "${USE_SAME_CNAME,,}" =~ ^(s|y|si|yes)$ ]]; then
-        CNAME_DOMAIN="$ORIGIN_DOMAIN"
-        # Verificar si el CNAME ya está en uso
-        check_cname_exists "$CNAME_DOMAIN" || continue
-        break
-    elif [[ "${USE_SAME_CNAME,,}" =~ ^(n|no)$ ]]; then
-        read -p $'\e[1;94m🌍 Ingrese el subdominio para el CNAME (ej: cdn.midominio.com): \e[0m' CNAME_DOMAIN
-        CNAME_DOMAIN=$(echo "$CNAME_DOMAIN" | tr '[:upper:]' '[:lower:]' | xargs)
-
-        [[ -z "$CNAME_DOMAIN" || "$CNAME_DOMAIN" =~ ^https?:// ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
-        [[ ! "$CNAME_DOMAIN" =~ ^[a-z0-9.-]+$ ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
-
-        # Verificar si el CNAME ya está en uso
-        check_cname_exists "$CNAME_DOMAIN" || continue
-        break
-    else
-        echo -e "${RED}❌ Opción inválida.${RESET}"
-    fi
-done
-
-echo -e "${GREEN}✔️ CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
-
-# Referencias
+# Generar nombre de referencia
 REFERENCE="cf-ui-$(date +%s)"
-ROOT_DOMAIN=$(echo "$CNAME_DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+ROOT_DOMAIN=$(echo "$ORIGIN_DOMAIN" | awk -F. '{n=split($0,a,"."); if(n>=2) print a[n-1]"."a[n]; else print $0}')
 
-# Certificado
+# Buscar certificado coincidente
 divider
 echo -e "${BOLD}${CYAN}🔒 Buscando certificado SSL para ${ROOT_DOMAIN}...${RESET}"
 divider
 
 CERT_ARN=$(aws acm list-certificates --region us-east-1 --output json | \
-jq -r --arg domain "$ROOT_DOMAIN" '.CertificateSummaryList[] | select(.DomainName | test($domain+"$")) | .CertificateArn' | head -n 1)
+  jq -r --arg domain "$ROOT_DOMAIN" '.CertificateSummaryList[] | select(.DomainName | test($domain+"$")) | .CertificateArn' | head -n 1)
 
-[[ -z "$CERT_ARN" ]] && echo -e "${RED}❌ No se encontró certificado.${RESET}" && exit 1
-echo -e "${GREEN}✔️ Certificado encontrado.${RESET}"
-
+if [[ -n "$CERT_ARN" ]]; then
+    echo -e "${GREEN}✔️ Certificado encontrado: ${CERT_ARN}${RESET}"
+else
+    echo -e "${RED}❌ No se encontró certificado para el dominio raíz. Abortando.${RESET}"
+    exit 1
+fi
 divider
-read -p $'\e[1;95m📝 Descripción [Default: Cloudfront_Domain_1]: \e[0m' DESCRIPTION
+
+# Preguntar por descripción
+read -p $'\e[1;95m📝 Descripción para la distribución [Default: Cloudfront_Domain1]: \e[0m' DESCRIPTION
 DESCRIPTION="${DESCRIPTION:-Cloudfront_Domain_1}"
 
-# JSON
+# Crear archivo de configuración JSON
 divider
-echo -e "${BOLD}${CYAN}🛠️ Generando configuración...${RESET}"
+echo -e "${BOLD}${CYAN}🛠️ Generando configuración de distribución...${RESET}"
 
 cat > config_cloudfront.json <<EOF
 {
@@ -166,11 +138,11 @@ cat > config_cloudfront.json <<EOF
   "Comment": "${DESCRIPTION}",
   "Enabled": true,
   "PriceClass": "PriceClass_100",
-  "HttpVersion": "http1.1",
+  "HttpVersion": "http2",
   "IsIPV6Enabled": true,
   "Aliases": {
     "Quantity": 1,
-    "Items": ["${CNAME_DOMAIN}"]
+    "Items": ["${ORIGIN_DOMAIN}"]
   },
   "Origins": {
     "Quantity": 1,
@@ -195,15 +167,15 @@ cat > config_cloudfront.json <<EOF
     "ViewerProtocolPolicy": "allow-all",
     "AllowedMethods": {
       "Quantity": 7,
-      "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"],
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
       "CachedMethods": {
         "Quantity": 2,
-        "Items": ["GET","HEAD"]
+        "Items": ["GET", "HEAD"]
       }
     },
     "Compress": false,
-    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-    "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
+    "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+    "OriginRequestPolicyId": "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"
   },
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
@@ -213,41 +185,35 @@ cat > config_cloudfront.json <<EOF
 }
 EOF
 
-# Crear distribución
+echo -e "${GREEN}✔️ Configuración guardada en config_cloudfront.json${RESET}"
+
+# Crear la distribución
 divider
-echo -e "${BOLD}${CYAN}📡 Creando distribución CloudFront...${RESET}"
+echo -e "${BOLD}${CYAN}📡 Enviando configuración a CloudFront...${RESET}"
 
 if aws cloudfront create-distribution --distribution-config file://config_cloudfront.json > salida_cloudfront.json 2>error.log; then
     DOMAIN=$(jq -r '.Distribution.DomainName' salida_cloudfront.json)
     echo -e "${GREEN}🎉 Distribución creada exitosamente.${RESET}"
 else
     echo -e "${RED}💥 Error al crear la distribución.${RESET}"
+    echo -e "${YELLOW}🪵 Detalles del error:${RESET}"
     cat error.log
     exit 1
 fi
 
-# Limpieza
+# Limpieza final
+divider
+echo -e "${BLUE}🧹 Limpiando archivos temporales...${RESET}"
 rm -f config_cloudfront.json salida_cloudfront.json error.log
 
+# Créditos
 divider
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${MAGENTA} █████╗ ██╗    ██╗███████╗${RESET}"
-echo -e "${MAGENTA}██╔══██╗██║    ██║██╔════╝${RESET}"
-echo -e "${MAGENTA}███████║██║ █╗ ██║███████╗${RESET}"
-echo -e "${MAGENTA}██╔══██║██║███╗██║╚════██║${RESET}"
-echo -e "${MAGENTA}██║  ██║╚███╔███╔╝███████║${RESET}"
-echo -e "${MAGENTA}╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝${RESET}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-
-echo -e "${MAGENTA}🌍 Dominio de origen: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
-echo -e "${MAGENTA}🔗 CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
-echo -e "${MAGENTA}🔗 URL CloudFront: ${BOLD}https://${DOMAIN}${RESET}"
-echo -e "${MAGENTA}🔐 Certificado: ${CERT_ARN}${RESET}"
-
+echo -e "${GREEN}✅ Proceso finalizado correctamente.${RESET}"
 divider
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${MAGENTA}🔗 URL de acceso: ${BOLD}https://${DOMAIN}${RESET}"
+echo -e "${MAGENTA}🌍 Dominio configurado: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
+echo -e "${MAGENTA}📄 Descripción: ${DESCRIPTION}${RESET}"
+echo -e "${MAGENTA}🔐 Certificado usado: ${CERT_ARN}${RESET}"
+echo -e "${MAGENTA}🕒 Fecha: $(date)${RESET}"
+divider
 echo -e "${BOLD}${CYAN}🔧 Script creado por 👾 Christopher Ackerman${RESET}"
-divider
-
-#aws cloudfront list-cache-policies --type managed --query "CachePolicyList.Items[?CachePolicy.CachePolicyConfig.Name=='Managed-CachingDisabled'].CachePolicy.Id" --output text
-#aws cloudfront list-origin-request-policies --type managed --query "OriginRequestPolicyList.Items[?OriginRequestPolicy.OriginRequestPolicyConfig.Name=='Managed-AllViewer'].OriginRequestPolicy.Id" --output text
