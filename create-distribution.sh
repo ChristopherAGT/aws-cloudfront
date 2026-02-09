@@ -3,7 +3,7 @@
 clear
 
 # ╔════════════════════════════════════════════════════════════╗
-# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT   ║
+# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT            ║
 # ╚════════════════════════════════════════════════════════════╝
 
 # Colores
