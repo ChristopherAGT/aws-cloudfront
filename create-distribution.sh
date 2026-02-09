@@ -147,7 +147,7 @@ cat > config_cloudfront.json <<EOF
   "Comment": "${DESCRIPTION}",
   "Enabled": true,
   "PriceClass": "PriceClass_100",
-  "HttpVersion": "http1.1",  # Desactivar HTTP/2
+  "HttpVersion": "http1.1",
   "IsIPV6Enabled": true,
   "Aliases": {
     "Quantity": 1,
@@ -165,7 +165,7 @@ cat > config_cloudfront.json <<EOF
           "OriginProtocolPolicy": "match-viewer",
           "OriginSslProtocols": {
             "Quantity": 1,
-            "Items": ["TLSv1.3"]  # Usar TLSv1.3_2025
+            "Items": ["TLSv1.3"]
           }
         }
       }
@@ -189,7 +189,7 @@ cat > config_cloudfront.json <<EOF
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
     "SSLSupportMethod": "sni-only",
-    "MinimumProtocolVersion": "TLSv1.3_2025"  # Usar TLSv1.3_2025
+    "MinimumProtocolVersion": "TLSv1.3_2025"
   }
 }
 EOF
