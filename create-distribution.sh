@@ -184,7 +184,7 @@ cat > config_cloudfront.json <<EOF
     },
     "Compress": false,
     "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-    "OriginRequestPolicyId": "216adef6-5c7b-47e4-b989-5492810003c2"
+    "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
   },
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
