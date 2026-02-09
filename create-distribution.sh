@@ -3,7 +3,7 @@
 clear
 
 # ╔════════════════════════════════════════════════════════════╗
-# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT            ║
+# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT   ║
 # ╚════════════════════════════════════════════════════════════╝
 
 # Colores
@@ -75,6 +75,50 @@ else
     aws configure
     aws sts get-caller-identity &> /dev/null || exit 1
 fi
+
+# Crear la política de caché "CachingDisabled"
+divider
+echo -e "${BOLD}${CYAN}🛠️ Creando política de caché CachingDisabled...${RESET}"
+divider
+
+CACHE_POLICY_ID=$(aws cloudfront create-cache-policy --cache-policy-config \
+    "{
+      \"Comment\": \"CachingDisabled\",
+      \"Name\": \"CachingDisabled\",
+      \"DefaultTTL\": 0,
+      \"MaxTTL\": 0,
+      \"MinTTL\": 0,
+      \"ParametersInCacheKeyAndForwardedToOrigin\": {
+        \"QueryStringConfig\": {\"Enabled\": false},
+        \"CookieConfig\": {\"Enabled\": false},
+        \"HeaderConfig\": {\"Enabled\": false}
+      }
+    }" --query 'CachePolicy.Id' --output text)
+
+echo -e "${GREEN}✔️ Política de caché creada con ID: ${CACHE_POLICY_ID}${RESET}"
+
+# Crear la política de solicitud de origen "AllViewer"
+divider
+echo -e "${BOLD}${CYAN}🛠️ Creando política de solicitud de origen AllViewer...${RESET}"
+divider
+
+ORIGIN_POLICY_ID=$(aws cloudfront create-origin-request-policy --origin-request-policy-config \
+    "{
+      \"Comment\": \"AllViewer\",
+      \"Name\": \"AllViewer\",
+      \"HeadersConfig\": {
+        \"HeaderBehavior\": \"whitelist\",
+        \"Headers\": {\"Quantity\": 0, \"Items\": []}
+      },
+      \"QueryStringsConfig\": {
+        \"QueryStringBehavior\": \"all\"
+      },
+      \"CookiesConfig\": {
+        \"CookieBehavior\": \"all\"
+      }
+    }" --query 'OriginRequestPolicy.Id' --output text)
+
+echo -e "${GREEN}✔️ Política de solicitud de origen creada con ID: ${ORIGIN_POLICY_ID}${RESET}"
 
 # Dominio de origen
 divider
@@ -183,8 +227,8 @@ cat > config_cloudfront.json <<EOF
       }
     },
     "Compress": false,
-    "CachePolicyId": "CachingDisabled",
-    "OriginRequestPolicyId": "AllViewer"
+    "CachePolicyId": "${CACHE_POLICY_ID}",  # ID de la política CachingDisabled
+    "OriginRequestPolicyId": "${ORIGIN_POLICY_ID}"  # ID de la política AllViewer
   },
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
