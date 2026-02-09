@@ -93,6 +93,20 @@ while true; do
     [[ "${CONFIRMAR,,}" =~ ^(s|y|si|yes)$ ]] && break
 done
 
+# Validar si el CNAME ya está en uso
+check_cname_exists() {
+    local cname="$1"
+    # Buscar en las distribuciones existentes si el CNAME ya está en uso
+    EXISTING_CNAME=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[?contains(@, '${cname}')]].Aliases.Items" --output text)
+
+    if [[ -n "$EXISTING_CNAME" ]]; then
+        echo -e "${RED}❌ El CNAME ${cname} ya está asociado a otra distribución de CloudFront.${RESET}"
+        return 1
+    else
+        return 0
+    fi
+}
+
 # CNAME
 divider
 echo -e "${BOLD}${CYAN}🔗 Configuración del CNAME (Alias)${RESET}"
@@ -103,6 +117,8 @@ while true; do
 
     if [[ "${USE_SAME_CNAME,,}" =~ ^(s|y|si|yes)$ ]]; then
         CNAME_DOMAIN="$ORIGIN_DOMAIN"
+        # Verificar si el CNAME ya está en uso
+        check_cname_exists "$CNAME_DOMAIN" || continue
         break
     elif [[ "${USE_SAME_CNAME,,}" =~ ^(n|no)$ ]]; then
         read -p $'\e[1;94m🌍 Ingrese el subdominio para el CNAME (ej: cdn.midominio.com): \e[0m' CNAME_DOMAIN
@@ -110,6 +126,9 @@ while true; do
 
         [[ -z "$CNAME_DOMAIN" || "$CNAME_DOMAIN" =~ ^https?:// ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
         [[ ! "$CNAME_DOMAIN" =~ ^[a-z0-9.-]+$ ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
+
+        # Verificar si el CNAME ya está en uso
+        check_cname_exists "$CNAME_DOMAIN" || continue
         break
     else
         echo -e "${RED}❌ Opción inválida.${RESET}"
