@@ -165,7 +165,7 @@ cat > config_cloudfront.json <<EOF
           "OriginProtocolPolicy": "match-viewer",
           "OriginSslProtocols": {
             "Quantity": 1,
-            "Items": ["TLSv1.3"]
+            "Items": ["TLSv1.2"]
           }
         }
       }
