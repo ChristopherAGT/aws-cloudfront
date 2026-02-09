@@ -97,7 +97,7 @@ CACHE_POLICY_ID=$(aws cloudfront create-cache-policy --cache-policy-config \
 
 echo -e "${GREEN}✔️ Política de caché creada con ID: ${CACHE_POLICY_ID}${RESET}"
 
-# Crear la política de solicitud de origen "AllViewer"
+# Política de solicitud de origen AllViewer (sin cambios)
 divider
 echo -e "${BOLD}${CYAN}🛠️ Creando política de solicitud de origen AllViewer...${RESET}"
 divider
