@@ -211,12 +211,24 @@ fi
 rm -f config_cloudfront.json salida_cloudfront.json error.log
 
 divider
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${MAGENTA} █████╗ ██╗    ██╗███████╗${RESET}"
+echo -e "${MAGENTA}██╔══██╗██║    ██║██╔════╝${RESET}"
+echo -e "${MAGENTA}███████║██║ █╗ ██║███████╗${RESET}"
+echo -e "${MAGENTA}██╔══██║██║███╗██║╚════██║${RESET}"
+echo -e "${MAGENTA}██║  ██║╚███╔███╔╝███████║${RESET}"
+echo -e "${MAGENTA}╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝${RESET}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+
 echo -e "${MAGENTA}🌍 Dominio de origen: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
 echo -e "${MAGENTA}🔗 CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
 echo -e "${MAGENTA}🔗 URL CloudFront: ${BOLD}https://${DOMAIN}${RESET}"
 echo -e "${MAGENTA}🔐 Certificado: ${CERT_ARN}${RESET}"
+
 divider
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${BOLD}${CYAN}🔧 Script creado por 👾 Christopher Ackerman${RESET}"
+divider
 
 #aws cloudfront list-cache-policies --type managed --query "CachePolicyList.Items[?CachePolicy.CachePolicyConfig.Name=='Managed-CachingDisabled'].CachePolicy.Id" --output text
 #aws cloudfront list-origin-request-policies --type managed --query "OriginRequestPolicyList.Items[?OriginRequestPolicy.OriginRequestPolicyConfig.Name=='Managed-AllViewer'].OriginRequestPolicy.Id" --output text
