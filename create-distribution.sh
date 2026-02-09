@@ -89,9 +89,9 @@ CACHE_POLICY_ID=$(aws cloudfront create-cache-policy --cache-policy-config \
       \"MaxTTL\": 0,
       \"MinTTL\": 0,
       \"ParametersInCacheKeyAndForwardedToOrigin\": {
-        \"QueryStringConfig\": {\"Enabled\": false},
-        \"CookieConfig\": {\"Enabled\": false},
-        \"HeaderConfig\": {\"Enabled\": false}
+        \"QueryStringsConfig\": {\"Enabled\": false},
+        \"CookiesConfig\": {\"Enabled\": false},
+        \"HeadersConfig\": {\"Enabled\": false}
       },
       \"EnableAcceptEncodingGzip\": true,
       \"EnableAcceptEncodingBrotli\": true
@@ -112,7 +112,7 @@ ORIGIN_POLICY_ID=$(aws cloudfront create-origin-request-policy --origin-request-
         \"HeaderBehavior\": \"whitelist\",
         \"Headers\": {
           \"Quantity\": 1,
-          \"Items\": [\"User-Agent\"]  # Añadir al menos un header
+          \"Items\": [\"User-Agent\"]  
         }
       },
       \"QueryStringsConfig\": {
