@@ -108,7 +108,10 @@ ORIGIN_POLICY_ID=$(aws cloudfront create-origin-request-policy --origin-request-
       \"Name\": \"AllViewer\",
       \"HeadersConfig\": {
         \"HeaderBehavior\": \"whitelist\",
-        \"Headers\": {\"Quantity\": 0, \"Items\": []}
+        \"Headers\": {
+          \"Quantity\": 1,
+          \"Items\": [\"User-Agent\"]  # Añadir al menos un header
+        }
       },
       \"QueryStringsConfig\": {
         \"QueryStringBehavior\": \"all\"
