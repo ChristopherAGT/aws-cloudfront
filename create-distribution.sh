@@ -92,7 +92,9 @@ CACHE_POLICY_ID=$(aws cloudfront create-cache-policy --cache-policy-config \
         \"QueryStringConfig\": {\"Enabled\": false},
         \"CookieConfig\": {\"Enabled\": false},
         \"HeaderConfig\": {\"Enabled\": false}
-      }
+      },
+      \"EnableAcceptEncodingGzip\": true,
+      \"EnableAcceptEncodingBrotli\": true
     }" --query 'CachePolicy.Id' --output text)
 
 echo -e "${GREEN}✔️ Política de caché creada con ID: ${CACHE_POLICY_ID}${RESET}"
