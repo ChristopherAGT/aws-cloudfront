@@ -31,7 +31,7 @@ spinner() {
 }
 
 divider() {
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
 # Encabezado
@@ -211,14 +211,14 @@ fi
 rm -f config_cloudfront.json salida_cloudfront.json error.log
 
 divider
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${MAGENTA} █████╗ ██╗    ██╗███████╗${RESET}"
 echo -e "${MAGENTA}██╔══██╗██║    ██║██╔════╝${RESET}"
 echo -e "${MAGENTA}███████║██║ █╗ ██║███████╗${RESET}"
 echo -e "${MAGENTA}██╔══██║██║███╗██║╚════██║${RESET}"
 echo -e "${MAGENTA}██║  ██║╚███╔███╔╝███████║${RESET}"
 echo -e "${MAGENTA}╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝${RESET}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 echo -e "${MAGENTA}🌍 Dominio de origen: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
 echo -e "${MAGENTA}🔗 CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
@@ -226,7 +226,7 @@ echo -e "${MAGENTA}🔗 URL CloudFront: ${BOLD}https://${DOMAIN}${RESET}"
 echo -e "${MAGENTA}🔐 Certificado: ${CERT_ARN}${RESET}"
 
 divider
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${BOLD}${CYAN}🔧 Script creado por 👾 Christopher Ackerman${RESET}"
 divider
 
