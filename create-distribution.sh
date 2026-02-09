@@ -230,8 +230,8 @@ cat > config_cloudfront.json <<EOF
       }
     },
     "Compress": false,
-    "CachePolicyId": "${CACHE_POLICY_ID}",  # ID de la política CachingDisabled
-    "OriginRequestPolicyId": "${ORIGIN_POLICY_ID}"  # ID de la política AllViewer
+    "CachePolicyId": "${CACHE_POLICY_ID}",  # ID de CachingDisabled
+    "OriginRequestPolicyId": "${ORIGIN_POLICY_ID}"  # ID de AllViewer
   },
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
