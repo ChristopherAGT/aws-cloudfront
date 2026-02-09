@@ -76,52 +76,66 @@ else
     aws sts get-caller-identity &> /dev/null || exit 1
 fi
 
-# Crear la política de caché "CachingDisabled"
+# Verificar si la política de caché "CachingDisabled" ya existe
 divider
-echo -e "${BOLD}${CYAN}🛠️ Creando política de caché CachingDisabled...${RESET}"
-divider
-
-CACHE_POLICY_ID=$(aws cloudfront create-cache-policy --cache-policy-config \
-    "{
-      \"Comment\": \"CachingDisabled\",
-      \"Name\": \"CachingDisabled\",
-      \"DefaultTTL\": 0,
-      \"MaxTTL\": 0,
-      \"MinTTL\": 0,
-      \"ParametersInCacheKeyAndForwardedToOrigin\": {
-        \"QueryStringsConfig\": {\"QueryStringBehavior\": \"none\"},
-        \"CookiesConfig\": {\"CookieBehavior\": \"none\"},
-        \"HeadersConfig\": {\"HeaderBehavior\": \"none\"}
-      }
-    }" --query 'CachePolicy.Id' --output text)
-
-echo -e "${GREEN}✔️ Política de caché creada con ID: ${CACHE_POLICY_ID}${RESET}"
-
-# Política de solicitud de origen AllViewer (sin cambios)
-divider
-echo -e "${BOLD}${CYAN}🛠️ Creando política de solicitud de origen AllViewer...${RESET}"
+echo -e "${BOLD}${CYAN}🛠️ Verificando política de caché CachingDisabled...${RESET}"
 divider
 
-ORIGIN_POLICY_ID=$(aws cloudfront create-origin-request-policy --origin-request-policy-config \
-    "{
-      \"Comment\": \"AllViewer\",
-      \"Name\": \"AllViewer\",
-      \"HeadersConfig\": {
-        \"HeaderBehavior\": \"whitelist\",
-        \"Headers\": {
-          \"Quantity\": 1,
-          \"Items\": [\"User-Agent\"]  
-        }
-      },
-      \"QueryStringsConfig\": {
-        \"QueryStringBehavior\": \"all\"
-      },
-      \"CookiesConfig\": {
-        \"CookieBehavior\": \"all\"
-      }
-    }" --query 'OriginRequestPolicy.Id' --output text)
+CACHE_POLICY_ID=$(aws cloudfront list-cache-policies --query "CachePolicyList[?Comment=='CachingDisabled'].Id" --output text)
 
-echo -e "${GREEN}✔️ Política de solicitud de origen creada con ID: ${ORIGIN_POLICY_ID}${RESET}"
+if [[ "$CACHE_POLICY_ID" == "None" ]]; then
+    # Crear la política de caché "CachingDisabled" si no existe
+    echo -e "${YELLOW}🚫 No se encontró la política de caché 'CachingDisabled', creando una nueva...${RESET}"
+    CACHE_POLICY_ID=$(aws cloudfront create-cache-policy --cache-policy-config \
+        "{
+          \"Comment\": \"CachingDisabled\",
+          \"Name\": \"CachingDisabled\",
+          \"DefaultTTL\": 0,
+          \"MaxTTL\": 0,
+          \"MinTTL\": 0,
+          \"ParametersInCacheKeyAndForwardedToOrigin\": {
+            \"QueryStringsConfig\": {\"QueryStringBehavior\": \"none\"},
+            \"CookiesConfig\": {\"CookieBehavior\": \"none\"},
+            \"HeadersConfig\": {\"HeaderBehavior\": \"none\"}
+          }
+        }" --query 'CachePolicy.Id' --output text)
+    echo -e "${GREEN}✔️ Política de caché creada con ID: ${CACHE_POLICY_ID}${RESET}"
+else
+    echo -e "${GREEN}✔️ Política de caché 'CachingDisabled' encontrada con ID: ${CACHE_POLICY_ID}${RESET}"
+fi
+
+# Verificar si la política de solicitud de origen "AllViewer" ya existe
+divider
+echo -e "${BOLD}${CYAN}🛠️ Verificando política de solicitud de origen AllViewer...${RESET}"
+divider
+
+ORIGIN_POLICY_ID=$(aws cloudfront list-origin-request-policies --query "OriginRequestPolicyList[?Comment=='AllViewer'].Id" --output text)
+
+if [[ "$ORIGIN_POLICY_ID" == "None" ]]; then
+    # Crear la política de solicitud de origen "AllViewer" si no existe
+    echo -e "${YELLOW}🚫 No se encontró la política de solicitud de origen 'AllViewer', creando una nueva...${RESET}"
+    ORIGIN_POLICY_ID=$(aws cloudfront create-origin-request-policy --origin-request-policy-config \
+        "{
+          \"Comment\": \"AllViewer\",
+          \"Name\": \"AllViewer\",
+          \"HeadersConfig\": {
+            \"HeaderBehavior\": \"whitelist\",
+            \"Headers\": {
+              \"Quantity\": 1,
+              \"Items\": [\"User-Agent\"]  
+            }
+          },
+          \"QueryStringsConfig\": {
+            \"QueryStringBehavior\": \"all\"
+          },
+          \"CookiesConfig\": {
+            \"CookieBehavior\": \"all\"
+          }
+        }" --query 'OriginRequestPolicy.Id' --output text)
+    echo -e "${GREEN}✔️ Política de solicitud de origen creada con ID: ${ORIGIN_POLICY_ID}${RESET}"
+else
+    echo -e "${GREEN}✔️ Política de solicitud de origen 'AllViewer' encontrada con ID: ${ORIGIN_POLICY_ID}${RESET}"
+fi
 
 # Dominio de origen
 divider
