@@ -36,9 +36,9 @@ divider() {
 
 # Encabezado
 echo -e "${CYAN}"
-echo "╔═══════════════════════════════════════════════════════════════════╗"
-echo "║              🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT              ║"
-echo "╚═══════════════════════════════════════════════════════════════════╝"
+echo "╔═════════════════════════════════════════════════════════════════════╗"
+echo "║               🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT               ║"
+echo "╚═════════════════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 sleep 1
 
