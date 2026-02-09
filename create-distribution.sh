@@ -189,7 +189,7 @@ cat > config_cloudfront.json <<EOF
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
     "SSLSupportMethod": "sni-only",
-    "MinimumProtocolVersion": "TLSv1.3_2025"
+    "MinimumProtocolVersion": "TLSv1.2_2021"
   }
 }
 EOF
