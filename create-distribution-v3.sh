@@ -93,12 +93,12 @@ while true; do
 done
 
 divider
-read -p $'\e[1;93m❓ ¿Desea crear la distribución SIN CNAME? (s/n): \e[0m' NO_CNAME
+read -p $'\e[1;93m❓ ¿Desea agregar un CNAME a la distribución? (s/n): \e[0m' USE_CNAME_INPUT
 
-if [[ "${NO_CNAME,,}" =~ ^(s|y|si|yes)$ ]]; then
-    USE_CNAME=false
-else
+if [[ "${USE_CNAME_INPUT,,}" =~ ^(s|y|si|yes)$ ]]; then
     USE_CNAME=true
+else
+    USE_CNAME=false
 fi
 
 check_cname_exists() {
