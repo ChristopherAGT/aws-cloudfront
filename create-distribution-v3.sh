@@ -3,7 +3,7 @@
 clear
 
 # ╔════════════════════════════════════════════════════════════╗
-# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT            ║
+# ║        🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT ║
 # ╚════════════════════════════════════════════════════════════╝
 
 # Colores
@@ -37,7 +37,7 @@ divider() {
 # Encabezado
 echo -e "${CYAN}"
 echo "╔═════════════════════════════════════════════════════════════════════╗"
-echo "║               🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT               ║"
+echo "║               🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT  ║"
 echo "╚═════════════════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 sleep 1
@@ -92,18 +92,15 @@ while true; do
     [[ "${CONFIRMAR,,}" =~ ^(s|y|si|yes)$ ]] && break
 done
 
-# NUEVA OPCIÓN
 divider
 read -p $'\e[1;93m❓ ¿Desea crear la distribución SIN CNAME? (s/n): \e[0m' NO_CNAME
 
 if [[ "${NO_CNAME,,}" =~ ^(s|y|si|yes)$ ]]; then
     USE_CNAME=false
-    CNAME_DOMAIN="Sin CNAME"
 else
     USE_CNAME=true
 fi
 
-# Validar si el CNAME ya está en uso
 check_cname_exists() {
     local cname="$1"
     EXISTING_CNAME=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[?contains(@, '${cname}')]].Aliases.Items" --output text)
@@ -297,7 +294,11 @@ echo -e "${MAGENTA}╚═╝  ╚═╝ ╚══╝╚══╝ ╚════
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 echo -e "${MAGENTA}🌍 Dominio de origen: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
+
+if [ "$USE_CNAME" = true ]; then
 echo -e "${MAGENTA}🔗 CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
+fi
+
 echo -e "${MAGENTA}🔗 URL CloudFront: ${BOLD}https://${DOMAIN}${RESET}"
 
 if [ "$USE_CNAME" = true ]; then
