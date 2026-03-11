@@ -16,7 +16,6 @@ CYAN='\e[1;96m'
 BOLD='\e[1m'
 RESET='\e[0m'
 
-# Spinner
 spinner() {
     local pid=$!
     local delay=0.15
@@ -34,7 +33,6 @@ divider() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 }
 
-# Encabezado
 echo -e "${CYAN}"
 echo "╔═════════════════════════════════════════════════════════════════════╗"
 echo "║               🌐 ASISTENTE PARA CREAR UNA DISTRIBUCIÓN CLOUDFRONT               ║"
@@ -49,7 +47,6 @@ divider
 echo -e "${BOLD}${CYAN}🔧 Verificando entorno (CLI, jq, dependencias)...${RESET}"
 divider
 
-# Validar herramientas
 check_command() {
     local cmd="$1"
     local pkg="$2"
@@ -76,7 +73,6 @@ else
     aws sts get-caller-identity &> /dev/null || exit 1
 fi
 
-# Dominio de origen
 divider
 echo -e "${BOLD}${CYAN}🌐 Configuración del dominio de origen${RESET}"
 divider
@@ -93,54 +89,41 @@ while true; do
     [[ "${CONFIRMAR,,}" =~ ^(s|y|si|yes)$ ]] && break
 done
 
-# Preguntar si desea usar CNAME
-divider
-read -p $'\e[1;93m❓ ¿Desea agregar un CNAME a la distribución? (s/n): \e[0m' USE_CNAME
-USE_CNAME=$(echo "$USE_CNAME" | tr '[:upper:]' '[:lower:]')
-
-# Validar si el CNAME ya está en uso
-check_cname_exists() {
-    local cname="$1"
-    EXISTING_CNAME=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[?contains(@, '${cname}')]].Aliases.Items" --output text)
-
-    if [[ -n "$EXISTING_CNAME" ]]; then
-        echo -e "${RED}❌ El CNAME ${cname} ya está asociado a otra distribución de CloudFront.${RESET}"
-        return 1
-    else
-        return 0
-    fi
-}
-
-if [[ "$USE_CNAME" =~ ^(s|y|si|yes)$ ]]; then
+# -------------------------------------------------
+# PREGUNTAR SI QUIERE USAR CNAME
+# -------------------------------------------------
 
 divider
 echo -e "${BOLD}${CYAN}🔗 Configuración del CNAME (Alias)${RESET}"
 divider
 
-while true; do
-    read -p $'\e[1;93m❓ ¿Desea usar el mismo dominio como CNAME? (s/n): \e[0m' USE_SAME_CNAME
+read -p $'\e[1;93m❓ ¿Desea agregar un CNAME a la distribución? (s/n): \e[0m' USE_CNAME
 
-    if [[ "${USE_SAME_CNAME,,}" =~ ^(s|y|si|yes)$ ]]; then
-        CNAME_DOMAIN="$ORIGIN_DOMAIN"
-        check_cname_exists "$CNAME_DOMAIN" || continue
-        break
-    elif [[ "${USE_SAME_CNAME,,}" =~ ^(n|no)$ ]]; then
-        read -p $'\e[1;94m🌍 Ingrese el subdominio para el CNAME (ej: cdn.midominio.com): \e[0m' CNAME_DOMAIN
+if [[ "${USE_CNAME,,}" =~ ^(s|y|si|yes)$ ]]; then
+
+    while true; do
+        read -p $'\e[1;94m🌍 Ingrese el CNAME (ej: cdn.midominio.com): \e[0m' CNAME_DOMAIN
         CNAME_DOMAIN=$(echo "$CNAME_DOMAIN" | tr '[:upper:]' '[:lower:]' | xargs)
 
         [[ -z "$CNAME_DOMAIN" || "$CNAME_DOMAIN" =~ ^https?:// ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
         [[ ! "$CNAME_DOMAIN" =~ ^[a-z0-9.-]+$ ]] && echo -e "${RED}❌ Dominio inválido.${RESET}" && continue
-
-        check_cname_exists "$CNAME_DOMAIN" || continue
         break
-    else
-        echo -e "${RED}❌ Opción inválida.${RESET}"
-    fi
-done
+    done
 
-echo -e "${GREEN}✔️ CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
+    echo -e "${GREEN}✔️ CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
+
+else
+
+    CNAME_DOMAIN="Sin CNAME"
+    echo -e "${YELLOW}⚠️ La distribución se creará sin CNAME.${RESET}"
+
+fi
 
 REFERENCE="cf-ui-$(date +%s)"
+
+# Certificado solo si hay CNAME
+if [[ "$CNAME_DOMAIN" != "Sin CNAME" ]]; then
+
 ROOT_DOMAIN=$(echo "$CNAME_DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
 
 divider
@@ -153,9 +136,6 @@ jq -r --arg domain "$ROOT_DOMAIN" '.CertificateSummaryList[] | select(.DomainNam
 [[ -z "$CERT_ARN" ]] && echo -e "${RED}❌ No se encontró certificado.${RESET}" && exit 1
 echo -e "${GREEN}✔️ Certificado encontrado.${RESET}"
 
-else
-echo -e "${YELLOW}⚠️ La distribución se creará sin CNAME.${RESET}"
-REFERENCE="cf-ui-$(date +%s)"
 fi
 
 divider
@@ -165,7 +145,42 @@ DESCRIPTION="${DESCRIPTION:-Cloudfront_Domain_1}"
 divider
 echo -e "${BOLD}${CYAN}🛠️ Generando configuración...${RESET}"
 
-if [[ "$USE_CNAME" =~ ^(s|y|si|yes)$ ]]; then
+# -------------------------------------------------
+# JSON SEGÚN SI HAY CNAME O NO
+# -------------------------------------------------
+
+if [[ "$CNAME_DOMAIN" == "Sin CNAME" ]]; then
+
+cat > config_cloudfront.json <<EOF
+{
+  "CallerReference": "${REFERENCE}",
+  "Comment": "${DESCRIPTION}",
+  "Enabled": true,
+  "PriceClass": "PriceClass_100",
+  "HttpVersion": "http1.1",
+  "IsIPV6Enabled": true,
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "CustomOrigin",
+        "DomainName": "${ORIGIN_DOMAIN}",
+        "CustomOriginConfig": {
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "match-viewer"
+        }
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "CustomOrigin",
+    "ViewerProtocolPolicy": "allow-all"
+  }
+}
+EOF
+
+else
 
 cat > config_cloudfront.json <<EOF
 {
@@ -188,83 +203,19 @@ cat > config_cloudfront.json <<EOF
         "CustomOriginConfig": {
           "HTTPPort": 80,
           "HTTPSPort": 443,
-          "OriginProtocolPolicy": "match-viewer",
-          "OriginSslProtocols": {
-            "Quantity": 1,
-            "Items": ["TLSv1.2"]
-          }
+          "OriginProtocolPolicy": "match-viewer"
         }
       }
     ]
-  },
-  "DefaultCacheBehavior": {
-    "TargetOriginId": "CustomOrigin",
-    "ViewerProtocolPolicy": "allow-all",
-    "AllowedMethods": {
-      "Quantity": 7,
-      "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"],
-      "CachedMethods": {
-        "Quantity": 2,
-        "Items": ["GET","HEAD"]
-      }
-    },
-    "Compress": false,
-    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-    "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
   },
   "ViewerCertificate": {
     "ACMCertificateArn": "${CERT_ARN}",
     "SSLSupportMethod": "sni-only",
     "MinimumProtocolVersion": "TLSv1.2_2021"
-  }
-}
-EOF
-
-else
-
-cat > config_cloudfront.json <<EOF
-{
-  "CallerReference": "${REFERENCE}",
-  "Comment": "${DESCRIPTION}",
-  "Enabled": true,
-  "PriceClass": "PriceClass_100",
-  "HttpVersion": "http1.1",
-  "IsIPV6Enabled": true,
-  "Origins": {
-    "Quantity": 1,
-    "Items": [
-      {
-        "Id": "CustomOrigin",
-        "DomainName": "${ORIGIN_DOMAIN}",
-        "CustomOriginConfig": {
-          "HTTPPort": 80,
-          "HTTPSPort": 443,
-          "OriginProtocolPolicy": "match-viewer",
-          "OriginSslProtocols": {
-            "Quantity": 1,
-            "Items": ["TLSv1.2"]
-          }
-        }
-      }
-    ]
   },
   "DefaultCacheBehavior": {
     "TargetOriginId": "CustomOrigin",
-    "ViewerProtocolPolicy": "allow-all",
-    "AllowedMethods": {
-      "Quantity": 7,
-      "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"],
-      "CachedMethods": {
-        "Quantity": 2,
-        "Items": ["GET","HEAD"]
-      }
-    },
-    "Compress": false,
-    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-    "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
-  },
-  "ViewerCertificate": {
-    "CloudFrontDefaultCertificate": true
+    "ViewerProtocolPolicy": "allow-all"
   }
 }
 EOF
@@ -286,10 +237,24 @@ fi
 rm -f config_cloudfront.json salida_cloudfront.json error.log
 
 divider
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${MAGENTA} █████╗ ██╗    ██╗███████╗${RESET}"
+echo -e "${MAGENTA}██╔══██╗██║    ██║██╔════╝${RESET}"
+echo -e "${MAGENTA}███████║██║ █╗ ██║███████╗${RESET}"
+echo -e "${MAGENTA}██╔══██║██║███╗██║╚════██║${RESET}"
+echo -e "${MAGENTA}██║  ██║╚███╔███╔╝███████║${RESET}"
+echo -e "${MAGENTA}╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝${RESET}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+
 echo -e "${MAGENTA}🌍 Dominio de origen: ${BOLD}${ORIGIN_DOMAIN}${RESET}"
-[[ "$USE_CNAME" =~ ^(s|y|si|yes)$ ]] && echo -e "${MAGENTA}🔗 CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
+echo -e "${MAGENTA}🔗 CNAME configurado: ${BOLD}${CNAME_DOMAIN}${RESET}"
 echo -e "${MAGENTA}🔗 URL CloudFront: ${BOLD}https://${DOMAIN}${RESET}"
 
+if [[ "$CNAME_DOMAIN" != "Sin CNAME" ]]; then
+echo -e "${MAGENTA}🔐 Certificado: ${CERT_ARN}${RESET}"
+fi
+
 divider
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${BOLD}${CYAN}🔧 Script creado por 👾 Christopher Ackerman${RESET}"
 divider
