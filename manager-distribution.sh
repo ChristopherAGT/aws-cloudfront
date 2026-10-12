@@ -1,11 +1,6 @@
 
 #!/usr/bin/env bash
 
-# ╔══════════════════════════════════════════════════════════════╗
-# ║                 AWS CLOUDFRONT MANAGER                       ║
-# ║                  Dashboard administrativo                    ║
-# ╚══════════════════════════════════════════════════════════════╝
-
 set -o pipefail
 
 # ────────────────────────────────────────────────────────────────
@@ -16,6 +11,10 @@ REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
 VERSION="v1.0"
+
+# Anchos visuales fijos
+BOX_INNER=56
+CARD_INNER=26
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -106,8 +105,146 @@ pause() {
 }
 
 line() {
-    printf '%b\n' \
-        "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}"
+    printf '%b\n' "${CYAN}  ──────────────────────────────────────────────────────────${R}"
+}
+
+# ────────────────────────────────────────────────────────────────
+# CÁLCULO DEL ANCHO VISIBLE
+# ────────────────────────────────────────────────────────────────
+
+visible_width() {
+    local value="$1"
+
+    # Eliminar secuencias ANSI de color antes de medir.
+    value="$(printf '%b' "$value" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g')"
+
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s' "$value" | python3 -c '
+import sys
+import unicodedata
+
+text = sys.stdin.read()
+width = 0
+join_next = False
+
+for char in text:
+    code = ord(char)
+
+    if unicodedata.combining(char):
+        continue
+
+    if char == "\u200d":
+        join_next = True
+        continue
+
+    if 0xFE00 <= code <= 0xFE0F or 0x1F3FB <= code <= 0x1F3FF:
+        continue
+
+    if join_next:
+        join_next = False
+        continue
+
+    if unicodedata.east_asian_width(char) in ("W", "F"):
+        width += 2
+    elif 0x1F000 <= code <= 0x1FAFF:
+        width += 2
+    else:
+        width += 1
+
+print(width)
+' 2>/dev/null
+    else
+        # Alternativa para sistemas sin Python 3.
+        printf '%s' "$value" | wc -m | tr -d '[:space:]'
+    fi
+}
+
+# ────────────────────────────────────────────────────────────────
+# MARCOS PRINCIPALES DE ANCHO FIJO
+# ────────────────────────────────────────────────────────────────
+
+box_top() {
+    local color="$1"
+    local border
+
+    border="$(printf '%*s' "$BOX_INNER" '' | tr ' ' '─')"
+
+    printf '%b  ╭%s╮%b\n' "$color" "$border" "$R"
+}
+
+box_bottom() {
+    local color="$1"
+    local border
+
+    border="$(printf '%*s' "$BOX_INNER" '' | tr ' ' '─')"
+
+    printf '%b  ╰%s╯%b\n' "$color" "$border" "$R"
+}
+
+box_line() {
+    local color="$1"
+    local content="$2"
+    local width padding
+
+    width="$(visible_width "$content")"
+    padding=$((BOX_INNER - width - 1))
+
+    if ((padding < 0)); then
+        # Evita que una línea demasiado larga rompa el marco.
+        content="${content:0:40}"
+        width="$(visible_width "$content")"
+        padding=$((BOX_INNER - width - 1))
+    fi
+
+    ((padding < 0)) && padding=0
+
+    printf '%b  │%b %b%*s%b%b│%b\n' \
+        "$color" "$R" \
+        "$content" "$padding" "" \
+        "$R" "$color" "$R"
+}
+
+# ────────────────────────────────────────────────────────────────
+# BORDES DE TARJETAS
+# ────────────────────────────────────────────────────────────────
+
+card_border() {
+    local color="$1"
+    local position="$2"
+    local border
+
+    border="$(printf '%*s' "$CARD_INNER" '' | tr ' ' '─')"
+
+    case "$position" in
+        top)
+            printf '%b┌%s┐%b' "$color" "$border" "$R"
+            ;;
+        bottom)
+            printf '%b└%s┘%b' "$color" "$border" "$R"
+            ;;
+    esac
+}
+
+card_line() {
+    local color="$1"
+    local content="$2"
+    local width padding
+
+    width="$(visible_width "$content")"
+    padding=$((CARD_INNER - width - 1))
+
+    if ((padding < 0)); then
+        content="${content:0:16}"
+        width="$(visible_width "$content")"
+        padding=$((CARD_INNER - width - 1))
+    fi
+
+    ((padding < 0)) && padding=0
+
+    printf '%b│%b %b%*s%b%b│%b' \
+        "$color" "$R" \
+        "$content" "$padding" "" \
+        "$R" "$color" "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -118,12 +255,14 @@ header() {
     clear 2>/dev/null || true
 
     printf '\n'
-    printf '%b\n' "${CYAN}  ╭────────────────────────────────────────────────────────╮${R}"
-    printf '%b\n' "${CYAN}  │                                                        │${R}"
-    printf '%b\n' "${CYAN}  │${R}       ${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}                 ${CYAN}│${R}"
-    printf '%b\n' "${CYAN}  │${R}       ${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}             ${CYAN}│${R}"
-    printf '%b\n' "${CYAN}  │                                                        │${R}"
-    printf '%b\n' "${CYAN}  ╰────────────────────────────────────────────────────────╯${R}"
+    box_top "$CYAN"
+
+    box_line "$CYAN" ""
+    box_line "$CYAN" "${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
+    box_line "$CYAN" "${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
+    box_line "$CYAN" ""
+
+    box_bottom "$CYAN"
     printf '\n'
 }
 
@@ -132,9 +271,12 @@ header() {
 # ────────────────────────────────────────────────────────────────
 
 status_bar() {
-    printf '%b\n' "${GRAY}  ┌────────────────────────────────────────────────────────┐${R}"
-    printf '%b\n' "${GRAY}  │${R} ${GREEN}✔ Panel listo${R}                                  ${YELLOW}${VERSION}${R} ${GRAY}│${R}"
-    printf '%b\n' "${GRAY}  └────────────────────────────────────────────────────────┘${R}"
+    box_top "$GRAY"
+
+    box_line "$GRAY" "${GREEN}✔ Panel listo${R}                         ${YELLOW}${VERSION}${R}"
+
+    box_bottom "$GRAY"
+    printf '\n'
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -148,106 +290,101 @@ section_title() {
 
 # ────────────────────────────────────────────────────────────────
 # TARJETAS DEL DASHBOARD
-# Dos columnas por dos filas.
-# Cada tarjeta utiliza el mismo ancho.
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
-    # Fila 1: bordes superiores
-    printf '%b\n' \
-        "${BLUE}  ┌──────────────────────────┐${R} ${GREEN}┌──────────────────────────┐${R}"
-
-    # Fila 1: títulos
-    printf '%b\n' \
-        "${BLUE}  │${R} ☁ ${BLUE}Distribuciones${R}           ${BLUE}│${R} ${GREEN}│${R} 🟢 ${GREEN}Habilitadas${R}              ${GREEN}│${R}"
-
-    # Fila 1: valores
-    printf '%b\n' \
-        "${BLUE}  │${R} ${WHITE}${B}Sin consultar${R}             ${BLUE}│${R} ${GREEN}│${R} ${WHITE}${B}Sin consultar${R}             ${GREEN}│${R}"
-
-    # Fila 1: bordes inferiores
-    printf '%b\n' \
-        "${BLUE}  └──────────────────────────┘${R} ${GREEN}└──────────────────────────┘${R}"
-
+    # Fila superior: bordes superiores.
+    card_border "$BLUE" top
+    printf '  '
+    card_border "$GREEN" top
     printf '\n'
 
-    # Fila 2: bordes superiores
-    printf '%b\n' \
-        "${YELLOW}  ┌──────────────────────────┐${R} ${MAGENTA}┌──────────────────────────┐${R}"
-
-    # Fila 2: títulos
-    printf '%b\n' \
-        "${YELLOW}  │${R} 🟡 ${YELLOW}Deshabilitadas${R}          ${YELLOW}│${R} ${MAGENTA}│${R} 🔐 ${MAGENTA}Certificados SSL${R}        ${MAGENTA}│${R}"
-
-    # Fila 2: valores
-    printf '%b\n' \
-        "${YELLOW}  │${R} ${WHITE}${B}Sin consultar${R}             ${YELLOW}│${R} ${MAGENTA}│${R} ${WHITE}${B}Sin consultar${R}             ${MAGENTA}│${R}"
-
-    # Fila 2: bordes inferiores
-    printf '%b\n' \
-        "${YELLOW}  └──────────────────────────┘${R} ${MAGENTA}└──────────────────────────┘${R}"
-
+    # Títulos.
+    card_line "$BLUE" "☁ ${BLUE}Distribuciones${R}"
+    printf '  '
+    card_line "$GREEN" "🟢 ${GREEN}Habilitadas${R}"
     printf '\n'
+
+    # Valores.
+    card_line "$BLUE" "${WHITE}${B}Sin consultar${R}"
+    printf '  '
+    card_line "$GREEN" "${WHITE}${B}Sin consultar${R}"
+    printf '\n'
+
+    # Bordes inferiores.
+    card_border "$BLUE" bottom
+    printf '  '
+    card_border "$GREEN" bottom
+    printf '\n\n'
+
+    # Fila inferior.
+    card_border "$YELLOW" top
+    printf '  '
+    card_border "$MAGENTA" top
+    printf '\n'
+
+    card_line "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
+    printf '  '
+    card_line "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
+    printf '\n'
+
+    card_line "$YELLOW" "${WHITE}${B}Sin consultar${R}"
+    printf '  '
+    card_line "$MAGENTA" "${WHITE}${B}Sin consultar${R}"
+    printf '\n'
+
+    card_border "$YELLOW" bottom
+    printf '  '
+    card_border "$MAGENTA" bottom
+    printf '\n\n'
+
     printf '%b\n' \
         "${GRAY}  ℹ Las estadísticas requieren una consulta real a AWS.${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
-# MENÚ PRINCIPAL VISUAL
+# DASHBOARD PRINCIPAL
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
     header
-
     status_bar
 
     section_title "RESUMEN DEL SISTEMA"
-
     dashboard_cards
 
     printf '\n'
-    printf '%b\n' \
-        "${CYAN}  ──────────────────────────────────────────────────────────${R}"
+    line
 
     section_title "CENTRO DE CONTROL"
 
-    printf '%b\n' \
-        "${CYAN}  ╭────────────────────────────────────────────────────────╮${R}"
+    box_top "$CYAN"
 
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[1]${R}  🚀 Crear distribución                         ${CYAN}│${R}"
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[2]${R}  📊 Ver estado de distribuciones               ${CYAN}│${R}"
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[3]${R}  ⚙️  Editar distribución                       ${CYAN}│${R}"
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[4]${R}  🔄 Activar / Desactivar distribución          ${CYAN}│${R}"
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[5]${R}  🗑️  Eliminar distribución                     ${CYAN}│${R}"
+    box_line "$CYAN" "${YELLOW}[1]${R} 🚀 Crear distribución"
+    box_line "$CYAN" "${YELLOW}[2]${R} 📊 Ver estado de distribuciones"
+    box_line "$CYAN" "${YELLOW}[3]${R} ⚙️ Editar distribución"
+    box_line "$CYAN" "${YELLOW}[4]${R} 🔄 Activar / Desactivar distribución"
+    box_line "$CYAN" "${YELLOW}[5]${R} 🗑️ Eliminar distribución"
 
-    printf '%b\n' \
-        "${CYAN}  │                                                        │${R}"
-    printf '%b\n' \
-        "${CYAN}  ├────────────────────────────────────────────────────────┤${R}"
-    printf '%b\n' \
-        "${CYAN}  │                                                        │${R}"
+    box_line "$CYAN" ""
 
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[6]${R}  🔐 Crear certificado SSL                      ${CYAN}│${R}"
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[7]${R}  🧹 Remover el panel                           ${CYAN}│${R}"
-    printf '%b\n' \
-        "${CYAN}  │${R} ${YELLOW}[8]${R}  🚪 Salir                                     ${CYAN}│${R}"
+    printf '%b\n' "${CYAN}  ├────────────────────────────────────────────────────────┤${R}"
 
-    printf '%b\n' \
-        "${CYAN}  ╰────────────────────────────────────────────────────────╯${R}"
+    box_line "$CYAN" ""
+
+    box_line "$CYAN" "${YELLOW}[6]${R} 🔐 Crear certificado SSL"
+    box_line "$CYAN" "${YELLOW}[7]${R} 🧹 Remover el panel"
+    box_line "$CYAN" "${YELLOW}[8]${R} 🚪 Salir"
+
+    box_bottom "$CYAN"
 
     printf '\n'
     printf '%b\n' \
         "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
 
     printf '\n'
-    printf '%b' "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
+    printf '%b' \
+        "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -412,14 +549,10 @@ main() {
 
             8)
                 printf '\n'
-                printf '%b\n' \
-                    "${CYAN}  ╭────────────────────────────────────────────────────────╮${R}"
-                printf '%b\n' \
-                    "${CYAN}  │${R}       ${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}          ${CYAN}│${R}"
-                printf '%b\n' \
-                    "${CYAN}  │${R}                   ${GRAY}Hasta pronto.${R}                     ${CYAN}│${R}"
-                printf '%b\n' \
-                    "${CYAN}  ╰────────────────────────────────────────────────────────╯${R}"
+                box_top "$CYAN"
+                box_line "$CYAN" "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
+                box_line "$CYAN" "${GRAY}Hasta pronto.${R}"
+                box_bottom "$CYAN"
                 printf '\n'
                 exit 0
                 ;;
