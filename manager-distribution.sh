@@ -1,12 +1,7 @@
-
 #!/usr/bin/env bash
 
-# ╔══════════════════════════════════════════════════════════════╗
-# ║                 AWS CLOUDFRONT MANAGER                       ║
-# ║                  Dashboard administrativo                    ║
-# ╚══════════════════════════════════════════════════════════════╝
-
 set -o pipefail
+export LC_ALL="${LC_ALL:-C.UTF-8}"
 
 # ────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN
@@ -17,11 +12,14 @@ BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
 VERSION="v1.0"
 
-# Anchos fijos de los cuadros.
-# BOX_INNER incluye los espacios entre los bordes verticales.
-BOX_INNER=54
-CARD_INNER=24
+MAX_INNER=54
+MIN_INNER=36
 CARD_GAP=2
+
+BOX_INNER=54
+CARD_INNER=25
+LEFT_MARGIN=2
+CARD_MARGIN=2
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -45,27 +43,52 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# UTILIDADES PARA MEDIR TEXTO Y DIBUJAR BORDES
+# MEDICIÓN DEL ANCHO VISIBLE
 # ────────────────────────────────────────────────────────────────
 
-# Calcula el ancho visible sin contar los códigos ANSI.
-# wc -L considera el ancho de las columnas de la terminal.
 visible_width() {
     local value="$1"
     local width
 
-    width="$(
-        printf '%s' "$value" |
-            LC_ALL="${LC_ALL:-C.UTF-8}" sed -E \
-                $'s/\033\\[[0-9;]*[[:alpha:]]//g' |
-            wc -L
-    )" || width=0
+    if command -v python3 >/dev/null 2>&1; then
+        width="$(
+            python3 -c '
+import re, sys, unicodedata
+
+s = sys.argv[1]
+s = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", s)
+
+width = 0
+for c in s:
+    if c == "\u200d" or unicodedata.combining(c):
+        continue
+    if unicodedata.category(c) == "Cf":
+        continue
+    if c in ("\ufe0e", "\ufe0f"):
+        continue
+    n = ord(c)
+    if 0x1F000 <= n <= 0x1FAFF or 0x2600 <= n <= 0x27BF:
+        width += 2
+    elif unicodedata.east_asian_width(c) in ("W", "F"):
+        width += 2
+    else:
+        width += 1
+
+print(width)
+' "$value" 2>/dev/null
+        )" || width=0
+    else
+        width="$(
+            printf '%s' "$value" |
+                sed -E $'s/\033\\[[0-?]*[ -/]*[@-~]//g' |
+                wc -L
+        )" || width=0
+    fi
 
     width="${width//[[:space:]]/}"
     printf '%s' "${width:-0}"
 }
 
-# Genera una línea horizontal de ancho exacto.
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -81,33 +104,75 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Rellena el contenido para que la caja conserve siempre
-# exactamente el mismo ancho, independientemente del texto.
-box_row() {
-    local color="$1"
-    local content="$2"
-    local width
-    local padding
+# ────────────────────────────────────────────────────────────────
+# AJUSTE DEL ANCHO A LA TERMINAL
+# ────────────────────────────────────────────────────────────────
 
-    width="$(visible_width "$content")"
-    padding=$((BOX_INNER - width - 2))
+configure_layout() {
+    local cols
 
-    ((padding < 0)) && padding=0
+    cols="${COLUMNS:-}"
 
-    printf '%b│%b %b%*s %b│%b\n' \
-        "$color" "$R" \
-        "$content" "$padding" "" \
-        "$color" "$R"
+    if [[ -z "$cols" ]] && command -v tput >/dev/null 2>&1; then
+        cols="$(tput cols 2>/dev/null || true)"
+    fi
+
+    [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+    ((cols < 40)) && cols=40
+
+    BOX_INNER=$((cols - 6))
+
+    ((BOX_INNER > MAX_INNER)) && BOX_INNER=$MAX_INNER
+    ((BOX_INNER < MIN_INNER)) && BOX_INNER=$MIN_INNER
+
+    # Las dos tarjetas ocupan exactamente el ancho de la caja.
+    CARD_INNER=$(((BOX_INNER - CARD_GAP - 4) / 2))
+
+    LEFT_MARGIN=$(((cols - BOX_INNER - 2) / 2))
+    ((LEFT_MARGIN < 0)) && LEFT_MARGIN=0
+
+    CARD_MARGIN=$LEFT_MARGIN
 }
 
-# Borde superior e inferior de una caja grande.
+indent() {
+    printf '%*s' "$LEFT_MARGIN" ''
+}
+
+# ────────────────────────────────────────────────────────────────
+# TEXTO AJUSTADO A UNA FILA
+# Conserva los colores y evita desbordamientos.
+# ────────────────────────────────────────────────────────────────
+
+fit_text() {
+    local content="$1"
+    local limit="$2"
+    local width
+
+    width="$(visible_width "$content")"
+
+    if ((width <= limit)); then
+        printf '%s' "$content"
+        return
+    fi
+
+    # Los textos del menú se ajustan mediante sus versiones
+    # compactas cuando la terminal es estrecha.
+    printf '%s' "$content"
+}
+
+# ────────────────────────────────────────────────────────────────
+# CAJAS GRANDES
+# BOX_INNER representa el ancho interior total.
+# ────────────────────────────────────────────────────────────────
+
 box_top() {
     local color="$1"
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
 
-    printf '%b  ╭%s╮%b\n' "$color" "$horizontal" "$R"
+    indent
+    printf '%b╭%s╮%b\n' "$color" "$horizontal" "$R"
 }
 
 box_bottom() {
@@ -116,46 +181,57 @@ box_bottom() {
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
 
-    printf '%b  ╰%s╯%b\n' "$color" "$horizontal" "$R"
+    indent
+    printf '%b╰%s╯%b\n' "$color" "$horizontal" "$R"
 }
 
-# Separador horizontal dentro de una caja.
 box_separator() {
     local color="$1"
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
 
-    printf '%b  ├%s┤%b\n' "$color" "$horizontal" "$R"
+    indent
+    printf '%b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Texto centrado dentro del ancho establecido.
-center_text() {
-    local text="$1"
-    local total="$2"
+# Cada fila ocupa exactamente BOX_INNER + 2 columnas,
+# sin contar los espacios de margen exteriores.
+box_row() {
+    local color="$1"
+    local content="$2"
     local width
-    local left
-    local right
+    local available
+    local padding
 
-    width="$(visible_width "$text")"
+    available=$((BOX_INNER - 2))
+    width="$(visible_width "$content")"
 
-    if ((width >= total)); then
-        printf '%s' "$text"
-        return
+    if ((width > available)); then
+        content="$(fit_text "$content" "$available")"
+        width="$(visible_width "$content")"
     fi
 
-    left=$(((total - width) / 2))
-    right=$((total - width - left))
+    padding=$((available - width))
+    ((padding < 0)) && padding=0
 
-    printf '%*s%b%*s' "$left" "" "$text" "$right" ""
+    indent
+    printf '%b│%b %b%*s%b│%b\n' \
+        "$color" "$R" \
+        "$content" "$padding" "" \
+        "$color" "$R"
 }
 
-# Línea exterior de una tarjeta pequeña.
+# ────────────────────────────────────────────────────────────────
+# TARJETAS PEQUEÑAS
+# ────────────────────────────────────────────────────────────────
+
 card_border() {
     local color="$1"
-    local side="$2"
+    local side
     local horizontal
 
+    side="$2"
     horizontal="$(repeat_char '─' "$CARD_INNER")"
 
     case "$side" in
@@ -168,19 +244,37 @@ card_border() {
     esac
 }
 
-# Fila interior de una tarjeta.
 card_row() {
     local color="$1"
     local content="$2"
     local width
+    local available
     local padding
 
+    available=$((CARD_INNER - 2))
     width="$(visible_width "$content")"
-    padding=$((CARD_INNER - width - 2))
 
+    if ((width > available)); then
+        # En tarjetas estrechas se usa una etiqueta compacta.
+        case "$content" in
+            *"Certificados SSL"*)
+                content="${MAGENTA}Certificados SSL${R}"
+                ;;
+            *"Deshabilitadas"*)
+                content="${YELLOW}Deshabilitadas${R}"
+                ;;
+            *)
+                content="$(fit_text "$content" "$available")"
+                ;;
+        esac
+
+        width="$(visible_width "$content")"
+    fi
+
+    padding=$((available - width))
     ((padding < 0)) && padding=0
 
-    printf '%b│%b %b%*s %b│%b' \
+    printf '%b│%b %b%*s%b│%b' \
         "$color" "$R" \
         "$content" "$padding" "" \
         "$color" "$R"
@@ -254,10 +348,18 @@ pause() {
 }
 
 line() {
-    printf '%b  %s%b\n' \
-        "$CYAN" \
-        "$(repeat_char '─' "$BOX_INNER")" \
-        "$R"
+    local horizontal
+
+    horizontal="$(repeat_char '─' "$BOX_INNER")"
+
+    indent
+    printf '%b%s%b\n' "$CYAN" "$horizontal" "$R"
+}
+
+section_title() {
+    printf '\n'
+    indent
+    printf '%b\n' "${BLUE}${B}◈ $1${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -265,19 +367,16 @@ line() {
 # ────────────────────────────────────────────────────────────────
 
 header() {
-    local title subtitle
-
     clear 2>/dev/null || true
 
-    title="${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
-    subtitle="${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
+    configure_layout
 
     printf '\n'
 
     box_top "$CYAN"
     box_row "$CYAN" ""
-    box_row "$CYAN" "$(center_text "$title" "$((BOX_INNER - 2))")"
-    box_row "$CYAN" "$(center_text "$subtitle" "$((BOX_INNER - 2))")"
+    box_row "$CYAN" "${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
+    box_row "$CYAN" "${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
     box_row "$CYAN" ""
     box_bottom "$CYAN"
 
@@ -289,84 +388,78 @@ header() {
 # ────────────────────────────────────────────────────────────────
 
 status_bar() {
-    local status
-
-    status="${GREEN}✔ Panel listo${R}                         ${YELLOW}${VERSION}${R}"
-
     box_top "$GRAY"
-    box_row "$GRAY" "$status"
+    box_row "$GRAY" "${GREEN}✔ Panel listo${R}                         ${YELLOW}${VERSION}${R}"
     box_bottom "$GRAY"
 }
 
 # ────────────────────────────────────────────────────────────────
-# TÍTULOS DE SECCIÓN
-# ────────────────────────────────────────────────────────────────
-
-section_title() {
-    printf '\n%b\n' "${BLUE}${B}  ◈ $1${R}"
-}
-
-# ────────────────────────────────────────────────────────────────
 # TARJETAS DEL DASHBOARD
-# Dos columnas por dos filas.
-# Ancho fijo y relleno calculado automáticamente.
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
     local gap
-
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # Fila 1: bordes superiores.
+    # Primera fila: bordes superiores.
+    indent
     card_border "$BLUE" top
     printf '%s' "$gap"
     card_border "$GREEN" top
     printf '\n'
 
-    # Fila 1: títulos.
+    # Primera fila: títulos.
+    indent
     card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "🟢 ${GREEN}Habilitadas${R}"
     printf '\n'
 
-    # Fila 1: valores.
+    # Primera fila: valores.
+    indent
     card_row "$BLUE" "${WHITE}${B}Sin consultar${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "${WHITE}${B}Sin consultar${R}"
     printf '\n'
 
-    # Fila 1: bordes inferiores.
+    # Primera fila: bordes inferiores.
+    indent
     card_border "$BLUE" bottom
     printf '%s' "$gap"
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # Fila 2: bordes superiores.
+    # Segunda fila: bordes superiores.
+    indent
     card_border "$YELLOW" top
     printf '%s' "$gap"
     card_border "$MAGENTA" top
     printf '\n'
 
-    # Fila 2: títulos.
+    # Segunda fila: títulos.
+    indent
     card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
     printf '\n'
 
-    # Fila 2: valores.
+    # Segunda fila: valores.
+    indent
     card_row "$YELLOW" "${WHITE}${B}Sin consultar${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "${WHITE}${B}Sin consultar${R}"
     printf '\n'
 
-    # Fila 2: bordes inferiores.
+    # Segunda fila: bordes inferiores.
+    indent
     card_border "$YELLOW" bottom
     printf '%s' "$gap"
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
+    indent
     printf '%b\n' \
-        "${GRAY}  ℹ Las estadísticas requieren una consulta real a AWS.${R}"
+        "${GRAY}ℹ Las estadísticas requieren una consulta real a AWS.${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -374,13 +467,10 @@ dashboard_cards() {
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
-    local menu_width
-
     header
     status_bar
 
     section_title "RESUMEN DEL SISTEMA"
-
     dashboard_cards
 
     printf '\n'
@@ -407,11 +497,13 @@ dashboard() {
     box_bottom "$CYAN"
 
     printf '\n'
+    indent
     printf '%b\n' \
-        "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
+        "${GRAY}AWS CloudFront · Administración · Seguridad SSL${R}"
 
     printf '\n'
-    printf '%b' "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
+    indent
+    printf '%b' "${CYAN}${B}❯ Selecciona una opción [1-8]: ${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -431,8 +523,7 @@ run_module() {
     }
 
     printf '\n'
-    printf '%b\n' \
-        "${CYAN}⟳ Descargando módulo: ${WHITE}${module}${R}"
+    printf '%b\n' "${CYAN}⟳ Descargando módulo: ${WHITE}${module}${R}"
 
     if ! curl -fsSL \
         --connect-timeout 10 \
@@ -580,10 +671,8 @@ main() {
                 printf '\n'
 
                 box_top "$CYAN"
-                box_row "$CYAN" \
-                    "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
-                box_row "$CYAN" \
-                    "${GRAY}Hasta pronto.${R}"
+                box_row "$CYAN" "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
+                box_row "$CYAN" "${GRAY}Hasta pronto.${R}"
                 box_bottom "$CYAN"
 
                 printf '\n'
