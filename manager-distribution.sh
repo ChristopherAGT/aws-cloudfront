@@ -15,9 +15,10 @@ set -o pipefail
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
+VERSION="v1.0"
 
 # ────────────────────────────────────────────────────────────────
-# COLORES
+# COLORES ANSI
 # ────────────────────────────────────────────────────────────────
 
 if [[ -t 1 ]]; then
@@ -38,7 +39,7 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# INSTALACIÓN COMO COMANDO GLOBAL DEL USUARIO
+# INSTALACIÓN COMO COMANDO GLOBAL
 # ────────────────────────────────────────────────────────────────
 
 install_manager() {
@@ -46,18 +47,12 @@ install_manager() {
 
     source_path="$(readlink -f -- "$0" 2>/dev/null || printf '%s' "$0")"
 
-    # Si ya se ejecuta desde la ruta de instalación, continuar.
-    if [[ "$0" == "$BIN_PATH" ]]; then
-        return 0
-    fi
-
-    # Evitar reinstalar recursivamente cuando el archivo ya está instalado.
     if [[ "$source_path" == "$BIN_PATH" ]]; then
         return 0
     fi
 
     mkdir -p "$BIN_DIR" || {
-        printf '%b\n' "${RED}✖ No se pudo crear el directorio ${BIN_DIR}.${R}"
+        printf '%b\n' "${RED}✖ No se pudo crear ${BIN_DIR}.${R}"
         exit 1
     }
 
@@ -73,9 +68,7 @@ install_manager() {
 
     case ":${PATH}:" in
         *":${BIN_DIR}:"*) ;;
-        *)
-            export PATH="${BIN_DIR}:${PATH}"
-            ;;
+        *) export PATH="${BIN_DIR}:${PATH}" ;;
     esac
 
     printf '\n%b\n' "${GREEN}✔ AWS Manager instalado correctamente.${R}"
@@ -84,7 +77,7 @@ install_manager() {
     exec "$BIN_PATH" "$@"
 }
 
-install_manager
+install_manager "$@"
 
 # ────────────────────────────────────────────────────────────────
 # DEPENDENCIAS
@@ -98,7 +91,7 @@ check_dependencies() {
 
     if ((${#missing[@]} > 0)); then
         printf '%b\n' "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
-        printf '%b\n' "${YELLOW}Instálalas con el gestor de paquetes de tu sistema.${R}"
+        printf '%b\n' "${YELLOW}Instálalas con el gestor de paquetes.${R}"
         exit 1
     fi
 }
@@ -113,97 +106,159 @@ pause() {
 }
 
 line() {
-    printf '%b\n' "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}"
+    printf '%b\n' \
+        "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}"
 }
+
+# ────────────────────────────────────────────────────────────────
+# ENCABEZADO
+# ────────────────────────────────────────────────────────────────
 
 header() {
     clear 2>/dev/null || true
 
     printf '\n'
-    printf '%b\n' "${CYAN}╔══════════════════════════════════════════════════════════════╗${R}"
-    printf '%b\n' "${CYAN}║${R}                                                              ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}  ${WHITE}${B}       ▄▀▀ █   █ ▄▀▀   █▀▀ █   █ █▀▀ █▀▀ █▀▀ █▀▀${R}       ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}  ${WHITE}${B}       ▀▄▄ █▄▄▄█ ▄▄▀   █   █▄▄▄█ █▀▀ ▀▀█ █   █▀▀${R}       ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}  ${WHITE}${B}       ▄▄▀ █   █ ▀▄▄   ▀▀▀ █   █ █▄▄ ▄▄█ █▄▄ █▄▄${R}       ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}                                                              ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}              ${B}${MAGENTA}C L O U D F R O N T   M A N A G E R${R}             ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}                  ${GRAY}PANEL DE ADMINISTRACIÓN${R}                     ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}║${R}                                                              ${CYAN}║${R}"
-    printf '%b\n' "${CYAN}╚══════════════════════════════════════════════════════════════╝${R}"
+    printf '%b\n' "${CYAN}  ╭────────────────────────────────────────────────────────╮${R}"
+    printf '%b\n' "${CYAN}  │                                                        │${R}"
+    printf '%b\n' "${CYAN}  │${R}       ${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}                 ${CYAN}│${R}"
+    printf '%b\n' "${CYAN}  │${R}       ${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}             ${CYAN}│${R}"
+    printf '%b\n' "${CYAN}  │                                                        │${R}"
+    printf '%b\n' "${CYAN}  ╰────────────────────────────────────────────────────────╯${R}"
     printf '\n'
 }
 
-section() {
-    printf '\n%b\n' "${CYAN}┌─ ${WHITE}${B}$1${R}${CYAN} ─────────────────────────────────────────────────────┐${R}"
+# ────────────────────────────────────────────────────────────────
+# BARRA DE ESTADO
+# ────────────────────────────────────────────────────────────────
+
+status_bar() {
+    printf '%b\n' "${GRAY}  ┌────────────────────────────────────────────────────────┐${R}"
+    printf '%b\n' "${GRAY}  │${R} ${GREEN}✔ Panel listo${R}                                  ${YELLOW}${VERSION}${R} ${GRAY}│${R}"
+    printf '%b\n' "${GRAY}  └────────────────────────────────────────────────────────┘${R}"
 }
 
-section_end() {
-    printf '%b\n' "${CYAN}└──────────────────────────────────────────────────────────────┘${R}"
+# ────────────────────────────────────────────────────────────────
+# TÍTULOS DE SECCIÓN
+# ────────────────────────────────────────────────────────────────
+
+section_title() {
+    printf '\n'
+    printf '%b\n' "${BLUE}${B}  ◈ $1${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
 # TARJETAS DEL DASHBOARD
+# Dos columnas por dos filas.
+# Cada tarjeta utiliza el mismo ancho.
 # ────────────────────────────────────────────────────────────────
 
-stat_card() {
-    local title="$1"
-    local value="$2"
-    local description="$3"
-    local color="$4"
+dashboard_cards() {
+    # Fila 1: bordes superiores
+    printf '%b\n' \
+        "${BLUE}  ┌──────────────────────────┐${R} ${GREEN}┌──────────────────────────┐${R}"
 
-    printf '%b\n' "${CYAN}┌──────────────────────────────────────────────────────────────┐${R}"
-    printf '%b\n' "${CYAN}│${R}  ${GRAY}${title}${R}"
-    printf '%b\n' "${CYAN}│${R}"
-    printf '%b\n' "${CYAN}│${R}  ${color}${B}${value}${R}"
-    printf '%b\n' "${CYAN}│${R}  ${GRAY}${description}${R}"
-    printf '%b\n' "${CYAN}└──────────────────────────────────────────────────────────────┘${R}"
+    # Fila 1: títulos
+    printf '%b\n' \
+        "${BLUE}  │${R} ☁ ${BLUE}Distribuciones${R}           ${BLUE}│${R} ${GREEN}│${R} 🟢 ${GREEN}Habilitadas${R}              ${GREEN}│${R}"
+
+    # Fila 1: valores
+    printf '%b\n' \
+        "${BLUE}  │${R} ${WHITE}${B}Sin consultar${R}             ${BLUE}│${R} ${GREEN}│${R} ${WHITE}${B}Sin consultar${R}             ${GREEN}│${R}"
+
+    # Fila 1: bordes inferiores
+    printf '%b\n' \
+        "${BLUE}  └──────────────────────────┘${R} ${GREEN}└──────────────────────────┘${R}"
+
+    printf '\n'
+
+    # Fila 2: bordes superiores
+    printf '%b\n' \
+        "${YELLOW}  ┌──────────────────────────┐${R} ${MAGENTA}┌──────────────────────────┐${R}"
+
+    # Fila 2: títulos
+    printf '%b\n' \
+        "${YELLOW}  │${R} 🟡 ${YELLOW}Deshabilitadas${R}          ${YELLOW}│${R} ${MAGENTA}│${R} 🔐 ${MAGENTA}Certificados SSL${R}        ${MAGENTA}│${R}"
+
+    # Fila 2: valores
+    printf '%b\n' \
+        "${YELLOW}  │${R} ${WHITE}${B}Sin consultar${R}             ${YELLOW}│${R} ${MAGENTA}│${R} ${WHITE}${B}Sin consultar${R}             ${MAGENTA}│${R}"
+
+    # Fila 2: bordes inferiores
+    printf '%b\n' \
+        "${YELLOW}  └──────────────────────────┘${R} ${MAGENTA}└──────────────────────────┘${R}"
+
+    printf '\n'
+    printf '%b\n' \
+        "${GRAY}  ℹ Las estadísticas requieren una consulta real a AWS.${R}"
 }
+
+# ────────────────────────────────────────────────────────────────
+# MENÚ PRINCIPAL VISUAL
+# ────────────────────────────────────────────────────────────────
 
 dashboard() {
     header
 
-    printf '%b\n' "${WHITE}${B}  DASHBOARD DE ADMINISTRACIÓN${R}"
-    printf '%b\n' "${GRAY}  Centro de control de distribuciones y certificados AWS${R}"
+    status_bar
+
+    section_title "RESUMEN DEL SISTEMA"
+
+    dashboard_cards
 
     printf '\n'
-    stat_card "DISTRIBUCIONES CLOUDFRONT" "● GESTIÓN DISPONIBLE" \
-        "Crear, consultar, editar y eliminar" "$CYAN"
+    printf '%b\n' \
+        "${CYAN}  ──────────────────────────────────────────────────────────${R}"
 
-    stat_card "ESTADO DEL SERVICIO" "● PANEL ACTIVO" \
-        "Interfaz de administración local" "$GREEN"
+    section_title "CENTRO DE CONTROL"
 
-    stat_card "CERTIFICADOS SSL/TLS" "● GESTIÓN DISPONIBLE" \
-        "Crear y administrar certificados" "$MAGENTA"
+    printf '%b\n' \
+        "${CYAN}  ╭────────────────────────────────────────────────────────╮${R}"
 
-    stat_card "CONSULTA AWS" "○ NO CONSULTADA" \
-        "Los datos reales se obtienen al ejecutar una opción" "$YELLOW"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[1]${R}  🚀 Crear distribución                         ${CYAN}│${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[2]${R}  📊 Ver estado de distribuciones               ${CYAN}│${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[3]${R}  ⚙️  Editar distribución                       ${CYAN}│${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[4]${R}  🔄 Activar / Desactivar distribución          ${CYAN}│${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[5]${R}  🗑️  Eliminar distribución                     ${CYAN}│${R}"
 
-    section "MENÚ PRINCIPAL"
+    printf '%b\n' \
+        "${CYAN}  │                                                        │${R}"
+    printf '%b\n' \
+        "${CYAN}  ├────────────────────────────────────────────────────────┤${R}"
+    printf '%b\n' \
+        "${CYAN}  │                                                        │${R}"
 
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}1${CYAN}]${R}  ${WHITE}Crear distribución${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}2${CYAN}]${R}  ${WHITE}Consultar estado de distribución${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}3${CYAN}]${R}  ${WHITE}Editar distribución${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}4${CYAN}]${R}  ${WHITE}Controlar estado de distribución${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}5${CYAN}]${R}  ${RED}Eliminar distribución${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}6${CYAN}]${R}  ${WHITE}Crear certificado SSL/TLS${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}7${CYAN}]${R}  ${YELLOW}Desinstalar panel${R}"
-    printf '%b\n' "${CYAN}│${R}  ${CYAN}[${WHITE}8${CYAN}]${R}  ${GRAY}Salir${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[6]${R}  🔐 Crear certificado SSL                      ${CYAN}│${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[7]${R}  🧹 Remover el panel                           ${CYAN}│${R}"
+    printf '%b\n' \
+        "${CYAN}  │${R} ${YELLOW}[8]${R}  🚪 Salir                                     ${CYAN}│${R}"
 
-    section_end
+    printf '%b\n' \
+        "${CYAN}  ╰────────────────────────────────────────────────────────╯${R}"
 
     printf '\n'
-    printf '%b\n' "${GRAY}  Repositorio: ChristopherAGT/aws-cloudfront${R}"
-    line
+    printf '%b\n' \
+        "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
+
+    printf '\n'
+    printf '%b' "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
-# EJECUCIÓN DE MÓDULOS REMOTOS
+# EJECUCIÓN SEGURA DE MÓDULOS REMOTOS
 # ────────────────────────────────────────────────────────────────
 
 run_module() {
     local module="$1"
     local url="${REPO}/${module}"
     local tmp_file
+    local result
 
     tmp_file="$(mktemp 2>/dev/null)" || {
         printf '%b\n' "${RED}✖ No se pudo crear un archivo temporal.${R}"
@@ -212,12 +267,18 @@ run_module() {
     }
 
     printf '\n'
-    printf '%b\n' "${CYAN}⟳ Descargando módulo: ${WHITE}${module}${R}"
+    printf '%b\n' \
+        "${CYAN}⟳ Descargando módulo: ${WHITE}${module}${R}"
 
-    if ! curl -fsSL --connect-timeout 10 --max-time 120 \
+    if ! curl -fsSL \
+        --connect-timeout 10 \
+        --max-time 120 \
         "$url" -o "$tmp_file"; then
+
         printf '%b\n' "${RED}✖ No se pudo descargar el módulo.${R}"
-        printf '%b\n' "${GRAY}Verifica la conexión y que el archivo exista en GitHub.${R}"
+        printf '%b\n' \
+            "${GRAY}Verifica la conexión y que el archivo exista en GitHub.${R}"
+
         rm -f -- "$tmp_file"
         pause
         return 1
@@ -237,16 +298,17 @@ run_module() {
         return 1
     fi
 
-    printf '%b\n' "${GREEN}✔ Módulo descargado. Iniciando...${R}"
+    printf '%b\n' "${GREEN}✔ Módulo verificado. Iniciando...${R}"
     printf '\n'
 
     bash "$tmp_file"
-    local result=$?
+    result=$?
 
     rm -f -- "$tmp_file"
 
     if ((result != 0)); then
-        printf '\n%b\n' "${YELLOW}⚠ El módulo terminó con código ${result}.${R}"
+        printf '\n%b\n' \
+            "${YELLOW}⚠ El módulo terminó con código ${result}.${R}"
     fi
 
     pause
@@ -260,22 +322,23 @@ run_module() {
 uninstall_manager() {
     printf '\n'
     printf '%b\n' "${YELLOW}${B}⚠ DESINSTALACIÓN DEL PANEL${R}"
-    printf '%b\n' "${GRAY}Esta acción elimina el comando local aws-manager.${R}"
-    printf '%b\n' "${GRAY}No elimina por sí sola los recursos creados en AWS.${R}"
+    printf '%b\n' \
+        "${GRAY}Se eliminará el comando local aws-manager.${R}"
+    printf '%b\n' \
+        "${GRAY}No se borrarán distribuciones ni certificados de AWS.${R}"
     printf '\n'
 
-    read -r -p "$(printf '%b' "${WHITE}¿Deseas continuar? [s/N]: ${R}")" confirm
+    read -r -p \
+        "$(printf '%b' "${WHITE}¿Deseas continuar? [s/N]: ${R}")" confirm
 
     case "$confirm" in
-        s|S|si|SI|Si|sí|Sí)
-            if [[ "$0" == "$BIN_PATH" ]]; then
-                rm -f -- "$BIN_PATH"
-            else
-                rm -f -- "$BIN_PATH"
-            fi
+        s|S|si|SI|Si|sí|Sí|SÍ)
+            rm -f -- "$BIN_PATH"
 
-            printf '\n%b\n' "${GREEN}✔ Comando aws-manager eliminado.${R}"
-            printf '%b\n' "${GRAY}Los módulos y recursos de AWS no se han eliminado automáticamente.${R}"
+            printf '\n%b\n' \
+                "${GREEN}✔ Comando aws-manager eliminado.${R}"
+            printf '%b\n' \
+                "${GRAY}Los recursos de AWS permanecen intactos.${R}"
             exit 0
             ;;
         *)
@@ -286,36 +349,50 @@ uninstall_manager() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# MENÚ PRINCIPAL
+# MENÚ PRINCIPAL Y CONTROL DE OPCIONES
 # ────────────────────────────────────────────────────────────────
 
 main() {
+    local option
+    local confirm
+
     check_dependencies
 
     while true; do
         dashboard
 
-        read -r -p "$(printf '%b' "${CYAN}  AWS-MANAGER ${WHITE}» ${R}")" option
+        if ! read -r option; then
+            printf '\n%b\n' "${GRAY}Entrada cerrada. Saliendo.${R}"
+            exit 0
+        fi
 
         case "$option" in
             1)
                 run_module "create-distribution.sh"
                 ;;
+
             2)
                 run_module "status-distribution.sh"
                 ;;
+
             3)
                 run_module "edit-distribution.sh"
                 ;;
+
             4)
                 run_module "control-status-distribution.sh"
                 ;;
+
             5)
-                printf '\n%b\n' "${RED}${B}⚠ ATENCIÓN: ELIMINAR DISTRIBUCIÓN${R}"
-                read -r -p "$(printf '%b' "${YELLOW}¿Continuar con el módulo de eliminación? [s/N]: ${R}")" confirm
+                printf '\n%b\n' \
+                    "${RED}${B}⚠ ATENCIÓN: ELIMINAR DISTRIBUCIÓN${R}"
+
+                read -r -p \
+                    "$(printf '%b' "${YELLOW}¿Continuar con el módulo de eliminación? [s/N]: ${R}")" \
+                    confirm
 
                 case "$confirm" in
-                    s|S|si|SI|Si|sí|Sí)
+                    s|S|si|SI|Si|sí|Sí|SÍ)
                         run_module "delete-distribution.sh"
                         ;;
                     *)
@@ -324,22 +401,32 @@ main() {
                         ;;
                 esac
                 ;;
+
             6)
                 run_module "create-certificate.sh"
                 ;;
+
             7)
                 uninstall_manager
                 ;;
+
             8)
-                printf '\n%b\n' "${CYAN}╔══════════════════════════════════════════════════════════════╗${R}"
-                printf '%b\n' "${CYAN}║${R}          ${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}                 ${CYAN}║${R}"
-                printf '%b\n' "${CYAN}║${R}                  ${GRAY}Hasta pronto.${R}                              ${CYAN}║${R}"
-                printf '%b\n' "${CYAN}╚══════════════════════════════════════════════════════════════╝${R}"
+                printf '\n'
+                printf '%b\n' \
+                    "${CYAN}  ╭────────────────────────────────────────────────────────╮${R}"
+                printf '%b\n' \
+                    "${CYAN}  │${R}       ${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}          ${CYAN}│${R}"
+                printf '%b\n' \
+                    "${CYAN}  │${R}                   ${GRAY}Hasta pronto.${R}                     ${CYAN}│${R}"
+                printf '%b\n' \
+                    "${CYAN}  ╰────────────────────────────────────────────────────────╯${R}"
                 printf '\n'
                 exit 0
                 ;;
+
             *)
-                printf '\n%b\n' "${RED}✖ Opción inválida. Selecciona un número del 1 al 8.${R}"
+                printf '\n%b\n' \
+                    "${RED}✖ Opción inválida. Selecciona del 1 al 8.${R}"
                 sleep 1
                 ;;
         esac
