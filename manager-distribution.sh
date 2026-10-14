@@ -33,30 +33,27 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES
+# DIMENSIONES DEL PANEL
 # ────────────────────────────────────────────────────────────────
 #
-# Marco principal:
-# 1 esquina + 54 horizontales + 1 esquina = 56 columnas.
+# Marco exterior: 46 columnas.
+# Esquinas incluidas: 1 + 44 + 1 = 46.
 #
 # Filas:
-# 1 borde + 1 espacio + 52 contenido + 1 espacio + 1 borde
-# = 56 columnas.
+# │ + espacio + 42 columnas + espacio + │ = 46.
 #
 # Tarjetas:
-# 1 esquina + 25 horizontales + 1 esquina = 27 columnas.
+# 22 + 2 espacios de separación + 22 = 46.
 #
-# Dos tarjetas:
-# 27 + 2 espacios + 27 = 56 columnas.
 # ────────────────────────────────────────────────────────────────
 
-BOX_INNER=54
-BOX_CONTENT=$((BOX_INNER - 2))
-LINE_WIDTH=$((BOX_INNER + 2))
+BOX_INNER=44
+BOX_CONTENT=42
+LINE_WIDTH=46
 
-CARD_INNER=25
+CARD_INNER=20
+CARD_CONTENT=18
 CARD_GAP=2
-CARD_CONTENT=$((CARD_INNER - 2))
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -76,44 +73,34 @@ if [[ -t 1 ]]; then
     WHITE=$'\033[1;37m'
     GRAY=$'\033[0;37m'
 else
-    R=''
-    B=''
-    D=''
-    RED=''
-    GREEN=''
-    YELLOW=''
-    BLUE=''
-    MAGENTA=''
-    CYAN=''
-    WHITE=''
-    GRAY=''
+    R='' B='' D=''
+    RED='' GREEN='' YELLOW=''
+    BLUE='' MAGENTA='' CYAN=''
+    WHITE='' GRAY=''
 fi
 
 # ────────────────────────────────────────────────────────────────
 # UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
-# Elimina secuencias ANSI sin utilizar expresiones sed inválidas.
 strip_ansi() {
-    printf '%b' "$1" |
+    printf '%s' "$1" |
         python3 -c '
 import re
 import sys
 
 text = sys.stdin.read()
-
-ansi = re.compile(
-    r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+text = re.sub(
+    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
+    "",
+    text
 )
-
-sys.stdout.write(ansi.sub("", text))
+sys.stdout.write(text)
 '
 }
 
-# Calcula el ancho visual aproximado del texto en la terminal.
-# Considera caracteres de ancho doble, emojis, banderas y ANSI.
 visible_width() {
-    printf '%b' "$1" |
+    printf '%s' "$1" |
         python3 -c '
 import re
 import sys
@@ -122,7 +109,7 @@ import unicodedata
 text = sys.stdin.read()
 
 text = re.sub(
-    r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
+    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
     "",
     text
 )
@@ -131,41 +118,36 @@ width = 0
 i = 0
 
 while i < len(text):
-    ch = text[i]
-    code = ord(ch)
+    char = text[i]
+    code = ord(char)
 
-    # Secuencias de unión y selectores de presentación.
     if code in (0x200D, 0xFE0E, 0xFE0F):
         i += 1
         continue
 
-    # Marcas combinantes y selectores suplementarios.
-    if unicodedata.combining(ch) or 0xE0100 <= code <= 0xE01EF:
+    if unicodedata.combining(char) or 0xE0100 <= code <= 0xE01EF:
         i += 1
         continue
 
-    # Banderas: dos indicadores regionales ocupan dos columnas.
     if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
         if i + 1 < len(text):
-            nxt = ord(text[i + 1])
+            next_code = ord(text[i + 1])
 
-            if 0x1F1E6 <= nxt <= 0x1F1FF:
+            if 0x1F1E6 <= next_code <= 0x1F1FF:
                 i += 1
 
         i += 1
         continue
 
-    # Símbolos con selector de presentación emoji.
     if i + 1 < len(text) and ord(text[i + 1]) == 0xFE0F:
         width += 2
         i += 2
         continue
 
-    # Emojis y caracteres de ancho doble.
     if (
-        unicodedata.east_asian_width(ch) in ("W", "F")
+        unicodedata.east_asian_width(char) in ("W", "F")
         or 0x1F000 <= code <= 0x1FAFF
         or 0x2600 <= code <= 0x27BF
     ):
@@ -179,7 +161,6 @@ print(width)
 '
 }
 
-# Repite un carácter una cantidad determinada de veces.
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -195,9 +176,8 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Ajusta un texto al ancho solicitado.
-# Si cabe, conserva los colores ANSI.
-# Si excede el ancho, elimina ANSI y recorta el texto.
+# Ajusta el texto al ancho visual disponible.
+# Si se necesita recortar, se eliminan primero los colores.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -211,6 +191,7 @@ fit_text() {
     if ((width > target_width)); then
         content="$plain"
 
+        # Elimina caracteres completos bajo la configuración UTF-8.
         while ((width > target_width)) && [[ -n "$content" ]]; do
             content="${content%?}"
             width="$(visible_width "$content")"
@@ -223,7 +204,6 @@ fit_text() {
     printf '%b%*s' "$content" "$padding" ""
 }
 
-# Centra un texto dentro de un ancho determinado.
 center_text() {
     local content="$1"
     local total="$2"
@@ -247,7 +227,7 @@ center_text() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# CUADROS GENERALES
+# MARCOS DEL PANEL
 # ────────────────────────────────────────────────────────────────
 
 box_top() {
@@ -277,8 +257,7 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Todas las filas tienen exactamente 56 columnas visibles:
-# borde + espacio + contenido + espacio + borde.
+# Ancho total del marco: 46 columnas.
 box_row() {
     local color="$1"
     local content="$2"
@@ -290,7 +269,6 @@ box_row() {
         "$color" "$R" "$R" "$fitted" "$R" "$color" "$R"
 }
 
-# Divisor horizontal del mismo ancho que el marco principal.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -319,7 +297,8 @@ card_border() {
     esac
 }
 
-# Cada fila de tarjeta tiene 27 columnas visibles.
+# Cada tarjeta mide 22 columnas:
+# 1 borde + 1 espacio + 18 contenido + 1 espacio + 1 borde.
 card_row() {
     local color="$1"
     local content="$2"
@@ -346,7 +325,7 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si se está ejecutando el archivo instalado, no reinstalarlo.
+    # Si ya se ejecuta el archivo instalado, no volver a copiarlo.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -411,9 +390,12 @@ check_dependencies() {
     command -v readlink >/dev/null 2>&1 || missing+=("readlink")
 
     if ((${#missing[@]} > 0)); then
-        printf '\n%b\n' "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
+        printf '\n%b\n' \
+            "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
+
         printf '%b\n' \
             "${YELLOW}Instala las herramientas faltantes y vuelve a ejecutar el panel.${R}"
+
         exit 1
     fi
 }
@@ -441,23 +423,30 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
-    if ! aws sts get-caller-identity --output json >/dev/null 2>&1; then
+    if ! aws sts get-caller-identity \
+        --output json >/dev/null 2>&1; then
         AWS_CONNECTION_STATUS="Error de autenticación"
         return 1
     fi
 
-    # CloudFront.
+    # Distribuciones de CloudFront.
     if distributions_json="$(
-        aws cloudfront list-distributions --output json 2>/dev/null
+        aws cloudfront list-distributions \
+            --output json 2>/dev/null
     )"; then
 
         if printf '%s' "$distributions_json" |
-            jq -e '(.DistributionList.Items // []) | type == "array"' \
-                >/dev/null 2>&1; then
+            jq -e '
+                (.DistributionList.Items // [])
+                | type == "array"
+            ' >/dev/null 2>&1; then
 
             total="$(
                 printf '%s' "$distributions_json" |
-                    jq -r '(.DistributionList.Items // []) | length'
+                    jq -r '
+                        (.DistributionList.Items // [])
+                        | length
+                    '
             )"
 
             enabled="$(
@@ -465,8 +454,12 @@ load_aws_statistics() {
                     jq -r '
                         [
                             (.DistributionList.Items // [])[]
-                            | select(.Enabled == true and .Status == "Deployed")
-                        ] | length
+                            | select(
+                                .Enabled == true
+                                and .Status == "Deployed"
+                            )
+                        ]
+                        | length
                     '
             )"
 
@@ -476,7 +469,8 @@ load_aws_statistics() {
                         [
                             (.DistributionList.Items // [])[]
                             | select(.Enabled == false)
-                        ] | length
+                        ]
+                        | length
                     '
             )"
 
@@ -485,8 +479,12 @@ load_aws_statistics() {
                     jq -r '
                         [
                             (.DistributionList.Items // [])[]
-                            | select(.Enabled == true and .Status != "Deployed")
-                        ] | length
+                            | select(
+                                .Enabled == true
+                                and .Status != "Deployed"
+                            )
+                        ]
+                        | length
                     '
             )"
 
@@ -499,18 +497,13 @@ load_aws_statistics() {
                 ENABLED_DISTRIBUTIONS="$enabled"
                 DISABLED_DISTRIBUTIONS="$disabled"
                 ENABLED_PENDING_DISTRIBUTIONS="$enabled_pending"
+
                 CF_STATS_OK=1
-            else
-                AWS_CONNECTION_STATUS="Datos inválidos de CloudFront"
             fi
-        else
-            AWS_CONNECTION_STATUS="Respuesta de CloudFront inválida"
         fi
-    else
-        AWS_CONNECTION_STATUS="Error consultando CloudFront"
     fi
 
-    # ACM.
+    # Certificados emitidos en ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -519,12 +512,17 @@ load_aws_statistics() {
     )"; then
 
         if printf '%s' "$certificates_json" |
-            jq -e '(.CertificateSummaryList // []) | type == "array"' \
-                >/dev/null 2>&1; then
+            jq -e '
+                (.CertificateSummaryList // [])
+                | type == "array"
+            ' >/dev/null 2>&1; then
 
             certificates="$(
                 printf '%s' "$certificates_json" |
-                    jq -r '(.CertificateSummaryList // []) | length'
+                    jq -r '
+                        (.CertificateSummaryList // [])
+                        | length
+                    '
             )"
 
             if [[ "$certificates" =~ ^[0-9]+$ ]]; then
@@ -536,7 +534,6 @@ load_aws_statistics() {
 
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="Conectado a AWS"
-        return 0
     elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
         AWS_CONNECTION_STATUS="CloudFront OK; error en ACM"
     elif ((CF_STATS_OK == 0 && ACM_STATS_OK == 1)); then
@@ -545,15 +542,16 @@ load_aws_statistics() {
         AWS_CONNECTION_STATUS="Error consultando AWS"
     fi
 
-    return 1
+    ((CF_STATS_OK == 1 && ACM_STATS_OK == 1))
 }
 
 # ────────────────────────────────────────────────────────────────
-# UTILIDADES VISUALES
+# PAUSA
 # ────────────────────────────────────────────────────────────────
 
 pause() {
     printf '\n'
+
     read -r -p \
         "$(printf '%b' "${GRAY}Presiona ENTER para continuar...${R}")" _
 }
@@ -603,7 +601,7 @@ status_bar() {
         status_text="${RED}✖ AWS sin datos${R}"
     fi
 
-    version_text="${YELLOW}${B}${VERSION}${R}"
+    version_text="${YELLOW}${VERSION}${R}"
 
     status_width="$(visible_width "$status_text")"
     version_width="$(visible_width "$version_text")"
@@ -627,7 +625,7 @@ section_title() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# TARJETAS DEL DASHBOARD
+# DASHBOARD: CUATRO TARJETAS COMPACTAS
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
@@ -660,7 +658,7 @@ dashboard_cards() {
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # Fila 2: deshabilitadas y certificados SSL.
+    # Fila 2: deshabilitadas y certificados.
     printf '  '
     card_border "$YELLOW" top
     printf '%s' "$gap"
@@ -685,13 +683,14 @@ dashboard_cards() {
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
-    # Estado de conexión.
+    # Estado de AWS.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
+    # Información de CloudFront.
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
@@ -703,6 +702,7 @@ dashboard_cards() {
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
 
+    # Información de ACM.
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
@@ -713,7 +713,7 @@ dashboard_cards() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# MENÚ PRINCIPAL VISUAL
+# MENÚ PRINCIPAL
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
@@ -750,8 +750,12 @@ dashboard() {
     box_bottom "$CYAN"
 
     printf '\n'
-    printf '%b\n' "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
+
+    printf '%b\n' \
+        "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
+
     printf '\n'
+
     printf '%b' "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
 }
 
@@ -816,6 +820,7 @@ run_module() {
     fi
 
     pause
+
     return "$result"
 }
 
@@ -828,8 +833,13 @@ uninstall_manager() {
 
     printf '\n'
     printf '%b\n' "${YELLOW}${B}⚠ DESINSTALACIÓN DEL PANEL${R}"
-    printf '%b\n' "${GRAY}Se eliminará el comando local aws-manager.${R}"
-    printf '%b\n' "${GRAY}No se borrarán distribuciones ni certificados de AWS.${R}"
+
+    printf '%b\n' \
+        "${GRAY}Se eliminará el comando local aws-manager.${R}"
+
+    printf '%b\n' \
+        "${GRAY}No se borrarán distribuciones ni certificados de AWS.${R}"
+
     printf '\n'
 
     read -r -p \
@@ -838,10 +848,14 @@ uninstall_manager() {
     case "$confirm" in
         s|S|si|SI|Si|sí|Sí|SÍ)
             if rm -f -- "$BIN_PATH"; then
-                printf '\n%b\n' "${GREEN}✔ Comando aws-manager eliminado.${R}"
-                printf '%b\n' "${GRAY}Los recursos de AWS permanecen intactos.${R}"
+                printf '\n%b\n' \
+                    "${GREEN}✔ Comando aws-manager eliminado.${R}"
+
+                printf '%b\n' \
+                    "${GRAY}Los recursos de AWS permanecen intactos.${R}"
             else
-                printf '\n%b\n' "${RED}✖ No se pudo eliminar el comando.${R}"
+                printf '\n%b\n' \
+                    "${RED}✖ No se pudo eliminar el comando.${R}"
                 pause
             fi
             exit 0
@@ -855,7 +869,7 @@ uninstall_manager() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# MENÚ PRINCIPAL Y CONTROL DE OPCIONES
+# MENÚ Y CONTROL DE OPCIONES
 # ────────────────────────────────────────────────────────────────
 
 main() {
@@ -901,6 +915,7 @@ main() {
                     s|S|si|SI|Si|sí|Sí|SÍ)
                         run_module "delete-distribution.sh"
                         ;;
+
                     *)
                         printf '%b\n' "${GRAY}Operación cancelada.${R}"
                         pause
@@ -918,10 +933,17 @@ main() {
 
             8)
                 printf '\n'
+
                 box_top "$CYAN"
-                box_row "$CYAN" "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
-                box_row "$CYAN" "${GRAY}Hasta pronto.${R}"
+
+                box_row "$CYAN" \
+                    "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
+
+                box_row "$CYAN" \
+                    "${GRAY}Hasta pronto.${R}"
+
                 box_bottom "$CYAN"
+
                 printf '\n'
                 exit 0
                 ;;
@@ -929,6 +951,7 @@ main() {
             *)
                 printf '\n%b\n' \
                     "${RED}✖ Opción inválida. Selecciona del 1 al 8.${R}"
+
                 sleep 1
                 ;;
         esac
