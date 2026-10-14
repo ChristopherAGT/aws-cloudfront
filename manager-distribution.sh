@@ -32,10 +32,13 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 ENABLED_PENDING_DISTRIBUTIONS="N/D"
 
-# Anchos fijos para mantener la interfaz alineada.
-BOX_INNER=48
-CARD_INNER=22
+# Medidas uniformes de la interfaz.
+BOX_INNER=54
+BOX_CONTENT=52
+
+CARD_INNER=25
 CARD_GAP=2
+CARD_CONTENT=23
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -59,7 +62,7 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# MEDICIÓN DE ANCHO VISIBLE
+# UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
 strip_ansi() {
@@ -67,6 +70,8 @@ strip_ansi() {
         sed -E $'s/\033\\[[0-9;?]*[[:alpha:]]//g'
 }
 
+# Calcula el ancho visible aproximado de texto Unicode.
+# Los colores ANSI no cuentan como caracteres visibles.
 visible_width() {
     local value="$1"
     local clean
@@ -75,7 +80,9 @@ visible_width() {
 
     printf '%s' "$clean" |
         awk '
-        BEGIN { width = 0 }
+        BEGIN {
+            width = 0
+        }
         {
             for (i = 1; i <= length($0); i++) {
                 c = substr($0, i, 1)
@@ -87,7 +94,9 @@ visible_width() {
                 }
             }
         }
-        END { print width }
+        END {
+            print width
+        }
         '
 }
 
@@ -106,10 +115,8 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# ────────────────────────────────────────────────────────────────
-# AJUSTE DE CONTENIDO A UN ANCHO FIJO
-# ────────────────────────────────────────────────────────────────
-
+# Recorta y rellena contenido para alcanzar un ancho fijo.
+# El contenido recibido puede incluir colores ANSI.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -118,8 +125,6 @@ fit_text() {
 
     width="$(visible_width "$content")"
 
-    # Recortar únicamente cuando el contenido supera el espacio.
-    # El recorte se realiza sobre el texto sin colores ANSI.
     if ((width > target_width)); then
         content="$(strip_ansi "$content")"
         content="${content:0:target_width}"
@@ -127,66 +132,12 @@ fit_text() {
     fi
 
     padding=$((target_width - width))
+    ((padding < 0)) && padding=0
 
     printf '%b%*s' "$content" "$padding" ""
 }
 
-# ────────────────────────────────────────────────────────────────
-# FILAS DE CUADROS
-# ────────────────────────────────────────────────────────────────
-
-box_row() {
-    local color="$1"
-    local content="$2"
-    local inner_width=$((BOX_INNER - 2))
-    local width
-    local padding
-
-    width="$(visible_width "$content")"
-
-    if ((width > inner_width - 1)); then
-        content="$(strip_ansi "$content")"
-        content="${content:0:$((inner_width - 1))}"
-        width="$(visible_width "$content")"
-    fi
-
-    padding=$((inner_width - width - 1))
-
-    ((padding < 0)) && padding=0
-
-    printf '%b│%b %b%*s%b│%b\n' \
-        "$color" "$R" \
-        "$content" "$padding" "" \
-        "$color" "$R"
-}
-
-box_top() {
-    local color="$1"
-    local horizontal
-
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    printf '%b  ╭%s╮%b\n' "$color" "$horizontal" "$R"
-}
-
-box_bottom() {
-    local color="$1"
-    local horizontal
-
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    printf '%b  ╰%s╯%b\n' "$color" "$horizontal" "$R"
-}
-
-box_separator() {
-    local color="$1"
-    local horizontal
-
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    printf '%b  ├%s┤%b\n' "$color" "$horizontal" "$R"
-}
-
+# Centra texto dentro de un ancho visible determinado.
 center_text() {
     local content="$1"
     local total="$2"
@@ -208,7 +159,58 @@ center_text() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# TARJETAS
+# CUADROS GENERALES
+# ────────────────────────────────────────────────────────────────
+
+box_top() {
+    local color="$1"
+    local horizontal
+
+    horizontal="$(repeat_char '─' "$BOX_INNER")"
+
+    printf '  %b╭%s╮%b\n' "$color" "$horizontal" "$R"
+}
+
+box_bottom() {
+    local color="$1"
+    local horizontal
+
+    horizontal="$(repeat_char '─' "$BOX_INNER")"
+
+    printf '  %b╰%s╯%b\n' "$color" "$horizontal" "$R"
+}
+
+box_separator() {
+    local color="$1"
+    local horizontal
+
+    horizontal="$(repeat_char '─' "$BOX_INNER")"
+
+    printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
+}
+
+# Cada fila tiene:
+# margen izquierdo + borde + espacio + contenido + borde + margen.
+box_row() {
+    local color="$1"
+    local content="$2"
+    local fitted
+
+    fitted="$(fit_text "$content" "$BOX_CONTENT")"
+
+    printf '  %b│%b %b%s%b│%b\n' \
+        "$color" "$R" "$R" "$fitted" "$color" "$R"
+}
+
+line() {
+    printf '  %b%s%b\n' \
+        "$CYAN" \
+        "$(repeat_char '─' "$BOX_INNER")" \
+        "$R"
+}
+
+# ────────────────────────────────────────────────────────────────
+# TARJETAS DEL DASHBOARD
 # ────────────────────────────────────────────────────────────────
 
 card_border() {
@@ -228,29 +230,16 @@ card_border() {
     esac
 }
 
+# Las tarjetas comparten exactamente el mismo ancho interior.
 card_row() {
     local color="$1"
     local content="$2"
-    local width
-    local padding
+    local fitted
 
-    width="$(visible_width "$content")"
+    fitted="$(fit_text "$content" "$CARD_CONTENT")"
 
-    # El ancho interior de la tarjeta incluye un espacio inicial.
-    if ((width > CARD_INNER - 1)); then
-        content="$(strip_ansi "$content")"
-        content="${content:0:$((CARD_INNER - 1))}"
-        width="$(visible_width "$content")"
-    fi
-
-    padding=$((CARD_INNER - width - 1))
-
-    ((padding < 0)) && padding=0
-
-    printf '%b│%b %b%*s%b│%b' \
-        "$color" "$R" \
-        "$content" "$padding" "" \
-        "$color" "$R"
+    printf '%b│%b %b%s%b│%b' \
+        "$color" "$R" "$R" "$fitted" "$color" "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -268,8 +257,8 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si ya se ejecuta desde la ubicación instalada,
-    # continuar sin reinstalar.
+    # Si ya se está ejecutando la versión instalada,
+    # continuar sin reinstalarla.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -286,8 +275,7 @@ install_manager() {
         exit 1
     fi
 
-    # El temporal se crea en el mismo directorio para permitir
-    # reemplazar el ejecutable de manera segura mediante mv.
+    # Crear el temporal en el mismo directorio que el ejecutable.
     temp_install="$(mktemp "${BIN_DIR}/.aws-manager.XXXXXX" 2>/dev/null)" || {
         printf '%b\n' "${RED}✖ No se pudo crear el archivo temporal.${R}"
         exit 1
@@ -305,6 +293,8 @@ install_manager() {
         exit 1
     fi
 
+    # Sustitución atómica: no se sobrescribe directamente
+    # el archivo que pudiera estar ejecutándose.
     if ! mv -f -- "$temp_install" "$BIN_PATH"; then
         rm -f -- "$temp_install"
         printf '%b\n' "${RED}✖ No se pudo instalar aws-manager.${R}"
@@ -368,6 +358,7 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
+    # Verificar credenciales.
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
 
@@ -508,14 +499,8 @@ load_aws_statistics() {
 
 pause() {
     printf '\n'
-    read -r -p "$(printf '%b' "${GRAY}Presiona ENTER para continuar...${R}")" _
-}
-
-line() {
-    printf '%b  %s%b\n' \
-        "$CYAN" \
-        "$(repeat_char '─' "$BOX_INNER")" \
-        "$R"
+    read -r -p \
+        "$(printf '%b' "${GRAY}Presiona ENTER para continuar...${R}")" _
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -523,7 +508,8 @@ line() {
 # ────────────────────────────────────────────────────────────────
 
 header() {
-    local title subtitle
+    local title
+    local subtitle
 
     clear 2>/dev/null || true
 
@@ -534,8 +520,8 @@ header() {
 
     box_top "$CYAN"
     box_row "$CYAN" ""
-    box_row "$CYAN" "$(center_text "$title" "$((BOX_INNER - 2))")"
-    box_row "$CYAN" "$(center_text "$subtitle" "$((BOX_INNER - 2))")"
+    box_row "$CYAN" "$(center_text "$title" "$BOX_CONTENT")"
+    box_row "$CYAN" "$(center_text "$subtitle" "$BOX_CONTENT")"
     box_row "$CYAN" ""
     box_bottom "$CYAN"
 
@@ -547,13 +533,12 @@ header() {
 # ────────────────────────────────────────────────────────────────
 
 status_bar() {
-    local status
     local status_text
     local version_text
-    local available_width
     local status_width
     local version_width
     local spaces
+    local available_width
 
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         status_text="${GREEN}✔ AWS conectado${R}"
@@ -568,14 +553,15 @@ status_bar() {
     status_width="$(visible_width "$status_text")"
     version_width="$(visible_width "$version_text")"
 
-    available_width=$((BOX_INNER - status_width - version_width - 4))
+    # El contenido tiene BOX_CONTENT columnas disponibles.
+    available_width=$((BOX_CONTENT - status_width - version_width))
+
     ((available_width < 1)) && available_width=1
 
     spaces="$(repeat_char ' ' "$available_width")"
-    status="${status_text}${spaces}${version_text}"
 
     box_top "$GRAY"
-    box_row "$GRAY" "$status"
+    box_row "$GRAY" "${status_text}${spaces}${version_text}"
     box_bottom "$GRAY"
 }
 
@@ -596,62 +582,62 @@ dashboard_cards() {
 
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # FILA 1: BORDES SUPERIORES
+    # Primera fila: bordes superiores.
     card_border "$BLUE" top
     printf '%s' "$gap"
     card_border "$GREEN" top
     printf '\n'
 
-    # FILA 1: TÍTULOS
+    # Primera fila: títulos.
     card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
     printf '\n'
 
-    # FILA 1: VALORES
+    # Primera fila: valores.
     card_row "$BLUE" "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
     printf '\n'
 
-    # FILA 1: BORDES INFERIORES
+    # Primera fila: bordes inferiores.
     card_border "$BLUE" bottom
     printf '%s' "$gap"
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # FILA 2: BORDES SUPERIORES
+    # Segunda fila: bordes superiores.
     card_border "$YELLOW" top
     printf '%s' "$gap"
     card_border "$MAGENTA" top
     printf '\n'
 
-    # FILA 2: TÍTULOS
+    # Segunda fila: títulos.
     card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
     printf '\n'
 
-    # FILA 2: VALORES
+    # Segunda fila: valores.
     card_row "$YELLOW" "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "${WHITE}${B}${SSL_CERTIFICATES}${R}"
     printf '\n'
 
-    # FILA 2: BORDES INFERIORES
+    # Segunda fila: bordes inferiores.
     card_border "$YELLOW" bottom
     printf '%s' "$gap"
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
-    # ESTADO DE CONEXIÓN
+    # Estado de conexión.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
-    # INFORMACIÓN DE CLOUDFRONT
+    # Información de CloudFront.
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
@@ -663,7 +649,7 @@ dashboard_cards() {
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
 
-    # INFORMACIÓN DE ACM
+    # Información de ACM.
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
