@@ -33,18 +33,21 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES DEL PANEL
+# DIMENSIONES FIJAS DEL PANEL
 # ────────────────────────────────────────────────────────────────
 #
-# Panel exterior: 46 columnas visibles.
-# 1 borde + 44 caracteres horizontales + 1 borde.
+# Panel general:
+# 1 borde + 44 caracteres + 1 borde = 46 columnas.
 #
-# Filas:
+# Contenido:
 # 1 borde + 1 espacio + 42 contenido
-# + 1 espacio + 1 borde = 46.
+# + 1 espacio + 1 borde = 46 columnas.
 #
-# Dashboard:
-# 22 columnas + 2 espacios + 22 columnas = 46.
+# Tarjetas:
+# 1 borde + 20 caracteres + 1 borde = 22 columnas.
+#
+# Dos tarjetas:
+# 22 + 2 espacios + 22 = 46 columnas.
 #
 # ────────────────────────────────────────────────────────────────
 
@@ -188,8 +191,7 @@ repeat_char() {
 }
 
 # Ajusta el texto al ancho visual solicitado.
-# Si el texto cabe, conserva sus colores ANSI.
-# Si necesita recortarse, primero elimina los colores.
+# El ancho final siempre será el solicitado.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -200,6 +202,7 @@ fit_text() {
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
+    # Recortar el contenido si supera el espacio disponible.
     if ((width > target_width)); then
         content="$plain"
 
@@ -212,10 +215,12 @@ fit_text() {
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    printf '%b%*s' "$content" "$padding" ""
+    # Imprimir el contenido y completar las columnas restantes.
+    printf '%b' "$content"
+    printf '%*s' "$padding" ''
 }
 
-# Centra texto según su ancho visual.
+# Centra el texto según su ancho visual.
 center_text() {
     local content="$1"
     local total="$2"
@@ -269,8 +274,8 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Cada fila ocupa 46 columnas visibles, sin contar
-# los dos espacios de margen que preceden al panel.
+# Fila de ancho fijo.
+# El borde derecho permanece siempre en la misma columna.
 box_row() {
     local color="$1"
     local content="$2"
@@ -278,11 +283,15 @@ box_row() {
 
     fitted="$(fit_text "$content" "$BOX_CONTENT")"
 
-    printf '  %b│%b %b%s%b %b│%b\n' \
-        "$color" "$R" "$R" "$fitted" "$R" "$color" "$R"
+    printf '  %b│%b %s %b│%b\n' \
+        "$color" \
+        "$R" \
+        "$fitted" \
+        "$color" \
+        "$R"
 }
 
-# Línea divisoria de 46 columnas.
+# Línea divisoria de ancho fijo.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -311,7 +320,8 @@ card_border() {
     esac
 }
 
-# Cada tarjeta ocupa 22 columnas visibles.
+# Fila de tarjeta de ancho fijo.
+# Cada tarjeta ocupa exactamente 22 columnas.
 card_row() {
     local color="$1"
     local content="$2"
@@ -319,8 +329,12 @@ card_row() {
 
     fitted="$(fit_text "$content" "$CARD_CONTENT")"
 
-    printf '%b│%b %b%s%b %b│%b' \
-        "$color" "$R" "$R" "$fitted" "$R" "$color" "$R"
+    printf '%b│%b %s %b│%b' \
+        "$color" \
+        "$R" \
+        "$fitted" \
+        "$color" \
+        "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
