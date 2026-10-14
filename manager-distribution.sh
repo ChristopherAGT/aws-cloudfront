@@ -32,8 +32,7 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 ENABLED_PENDING_DISTRIBUTIONS="N/D"
 
-# Dimensiones de la interfaz.
-# Los bordes horizontales utilizan BOX_INNER y CARD_INNER.
+# Dimensiones de los cuadros.
 BOX_INNER=54
 BOX_CONTENT=$((BOX_INNER - 1))
 
@@ -66,54 +65,62 @@ fi
 # UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
+# Elimina secuencias ANSI sin utilizar expresiones sed
+# que puedan provocar errores de rango.
 strip_ansi() {
     printf '%b' "$1" |
-        sed -E $'s/\033\\[[0-?]*[ -/]*[@-~]//g'
+        python3 -c '
+import re
+import sys
+
+text = sys.stdin.read()
+text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+sys.stdout.write(text)
+'
 }
 
-# Calcula el ancho visual aproximado del texto Unicode.
-# Excluye colores ANSI, marcas combinantes y selectores emoji.
+# Calcula el ancho visual del texto Unicode.
+# No cuenta los códigos ANSI ni las marcas combinantes.
 visible_width() {
-    local value="$1"
-
-    printf '%b' "$value" |
+    printf '%b' "$1" |
         python3 -c '
+import re
 import sys
 import unicodedata
 
 text = sys.stdin.read()
-width = 0
-join_next = False
-regional_count = 0
+text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
 
-for char in text:
+width = 0
+i = 0
+
+while i < len(text):
+    char = text[i]
     code = ord(char)
 
     # Selectores de presentación y unión de emojis.
-    if code in (0xFE0E, 0xFE0F, 0x200D):
-        if code == 0x200D:
-            join_next = True
+    if code in (0x200D, 0xFE0E, 0xFE0F):
+        i += 1
         continue
 
-    # Marcas combinantes.
+    # Caracteres combinantes.
     if unicodedata.combining(char):
+        i += 1
         continue
 
-    # Banderas formadas por indicadores regionales.
+    # Indicadores regionales utilizados en banderas.
     if 0x1F1E6 <= code <= 0x1F1FF:
-        regional_count += 1
-        if regional_count % 2 == 1:
-            width += 2
-        continue
-    else:
-        regional_count = 0
+        width += 2
 
-    # No volver a contar el componente siguiente de un emoji unido.
-    if join_next:
-        join_next = False
+        if i + 1 < len(text):
+            next_code = ord(text[i + 1])
+            if 0x1F1E6 <= next_code <= 0x1F1FF:
+                i += 1
+
+        i += 1
         continue
 
-    # Caracteres de ancho doble y emojis habituales.
+    # Emojis y caracteres de ancho doble.
     if (
         unicodedata.east_asian_width(char) in ("W", "F")
         or 0x1F000 <= code <= 0x1FAFF
@@ -122,6 +129,8 @@ for char in text:
         width += 2
     else:
         width += 1
+
+    i += 1
 
 print(width)
 '
@@ -142,7 +151,8 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Ajusta el contenido a un ancho visual determinado.
+# Ajusta el texto al ancho disponible y conserva sus colores
+# cuando no es necesario recortarlo.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -153,16 +163,19 @@ fit_text() {
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
-    # Recortar texto que exceda el ancho disponible.
-    # Se elimina un carácter por iteración para evitar exceder el ancho.
     if ((width > target_width)); then
+        # Recortar únicamente cuando el texto excede el ancho.
+        # El recorte elimina colores para evitar secuencias
+        # ANSI incompletas.
         content="$plain"
-        width="$(visible_width "$content")"
 
         while ((width > target_width)) && [[ -n "$content" ]]; do
             content="${content%?}"
             width="$(visible_width "$content")"
         done
+    else
+        # Mantener el contenido original y sus colores.
+        content="$content"
     fi
 
     padding=$((target_width - width))
@@ -171,7 +184,7 @@ fit_text() {
     printf '%b%*s' "$content" "$padding" ""
 }
 
-# Centra el texto según su ancho visual calculado.
+# Centra texto según su ancho visual.
 center_text() {
     local content="$1"
     local total="$2"
@@ -225,7 +238,7 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Mantiene la misma geometría en todas las filas.
+# Cada fila tiene el mismo ancho visible que los bordes.
 box_row() {
     local color="$1"
     local content="$2"
@@ -265,7 +278,6 @@ card_border() {
     esac
 }
 
-# Conserva el mismo ancho en cada fila de las tarjetas.
 card_row() {
     local color="$1"
     local content="$2"
@@ -309,8 +321,8 @@ install_manager() {
         exit 1
     fi
 
-    # Crear el temporal junto al ejecutable para permitir
-    # una sustitución atómica.
+    # Crear el temporal en el mismo directorio para permitir
+    # una sustitución atómica del ejecutable.
     temp_install="$(mktemp "${BIN_DIR}/.aws-manager.XXXXXX" 2>/dev/null)" || {
         printf '%b\n' "${RED}✖ No se pudo crear el archivo temporal.${R}"
         exit 1
