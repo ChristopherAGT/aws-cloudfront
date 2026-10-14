@@ -17,7 +17,7 @@ export AWS_PAGER=""
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
-VERSION="v1.4"
+VERSION="v1.1"
 
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
@@ -35,19 +35,6 @@ ACM_STATS_OK=0
 # ────────────────────────────────────────────────────────────────
 # DIMENSIONES FIJAS
 # ────────────────────────────────────────────────────────────────
-
-# Panel:
-# 2 espacios de margen + 46 columnas.
-#
-# Fila interior:
-# borde + espacio + 42 columnas + espacio + borde = 46.
-#
-# Tarjeta:
-# borde + 20 columnas + borde = 22.
-#
-# Dashboard:
-# 2 espacios + 22 + 2 espacios + 22 = 48 columnas
-# incluyendo los dos espacios iniciales del panel.
 
 BOX_INNER=44
 BOX_CONTENT=42
@@ -208,14 +195,11 @@ fit_text() {
             content="${content%?}"
             width="$(visible_width "$content")"
         done
-
-        plain="$content"
     fi
 
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    # Imprimir el contenido y completar el ancho.
     printf '%b' "$content"
     printf '%*s' "$padding" ''
 }
@@ -284,11 +268,11 @@ box_row() {
 
     fitted="$(fit_text "$content" "$BOX_CONTENT")"
 
-    # 2 márgenes + 1 borde + 1 espacio + 42 columnas
-    # + 1 espacio + 1 borde = 48 columnas físicas de salida.
-    printf '  %b│%b ' "$color" "$R"
-    printf '%b' "$fitted"
-    printf ' %b│%b\n' "$color" "$R"
+    printf '  %b│%b' "$color" "$R"
+    printf ' '
+    printf '%s' "$fitted"
+    printf ' '
+    printf '%b│%b\n' "$color" "$R"
 }
 
 # Línea divisoria de ancho fijo.
@@ -320,7 +304,8 @@ card_border() {
     esac
 }
 
-# Cada fila de tarjeta ocupa exactamente 22 columnas visuales.
+# Cada fila de tarjeta ocupa exactamente 22 columnas:
+# borde + espacio + 18 columnas + espacio + borde.
 card_row() {
     local color="$1"
     local content="$2"
@@ -328,9 +313,11 @@ card_row() {
 
     fitted="$(fit_text "$content" "$CARD_CONTENT")"
 
-    printf '%b│%b ' "$color" "$R"
-    printf '%b' "$fitted"
-    printf ' %b│%b' "$color" "$R"
+    printf '%b│%b' "$color" "$R"
+    printf ' '
+    printf '%s' "$fitted"
+    printf ' '
+    printf '%b│%b' "$color" "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -592,7 +579,8 @@ header() {
 
     clear 2>/dev/null || true
 
-    title="${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
+    # Se elimina el emoji para mantener un ancho predecible.
+    title="${WHITE}${B}AWS CLOUDFRONT MANAGER${R}"
     subtitle="${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
 
     printf '\n'
@@ -619,12 +607,13 @@ status_bar() {
     local spaces
     local available_width
 
+    # Texto sin emojis para evitar diferencias de ancho visual.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
-        status_text="${GREEN}✔ AWS conectado${R}"
+        status_text="${GREEN}OK AWS conectado${R}"
     elif ((CF_STATS_OK == 1 || ACM_STATS_OK == 1)); then
-        status_text="${YELLOW}⚠ Datos parciales de AWS${R}"
+        status_text="${YELLOW}! Datos parciales de AWS${R}"
     else
-        status_text="${RED}✖ AWS sin datos${R}"
+        status_text="${RED}X AWS sin datos${R}"
     fi
 
     version_text="${YELLOW}${VERSION}${R}"
@@ -667,9 +656,9 @@ dashboard_cards() {
     printf '\n'
 
     printf '  '
-    card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
+    card_row "$BLUE" "${BLUE}* Distribuciones${R}"
     printf '%s' "$gap"
-    card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
+    card_row "$GREEN" "${GREEN}+ Operativas${R}"
     printf '\n'
 
     printf '  '
@@ -692,9 +681,9 @@ dashboard_cards() {
     printf '\n'
 
     printf '  '
-    card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
+    card_row "$YELLOW" "${YELLOW}- Deshabilitadas${R}"
     printf '%s' "$gap"
-    card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
+    card_row "$MAGENTA" "${MAGENTA}# Certificados SSL${R}"
     printf '\n'
 
     printf '  '
@@ -759,19 +748,19 @@ dashboard() {
 
     box_top "$CYAN"
 
-    box_row "$CYAN" "${YELLOW}[1]${R}  🚀 Crear distribución"
-    box_row "$CYAN" "${YELLOW}[2]${R}  📊 Ver estado de distribuciones"
-    box_row "$CYAN" "${YELLOW}[3]${R}  ⚙️ Editar distribución"
-    box_row "$CYAN" "${YELLOW}[4]${R}  🔄 Activar / Desactivar distribución"
-    box_row "$CYAN" "${YELLOW}[5]${R}  🗑️ Eliminar distribución"
+    box_row "$CYAN" "${YELLOW}[1]${R}  Crear distribución"
+    box_row "$CYAN" "${YELLOW}[2]${R}  Ver estado de distribuciones"
+    box_row "$CYAN" "${YELLOW}[3]${R}  Editar distribución"
+    box_row "$CYAN" "${YELLOW}[4]${R}  Activar / Desactivar distribución"
+    box_row "$CYAN" "${YELLOW}[5]${R}  Eliminar distribución"
 
     box_row "$CYAN" ""
     box_separator "$CYAN"
     box_row "$CYAN" ""
 
-    box_row "$CYAN" "${YELLOW}[6]${R}  🔐 Crear certificado SSL"
-    box_row "$CYAN" "${YELLOW}[7]${R}  🧹 Remover el panel"
-    box_row "$CYAN" "${YELLOW}[8]${R}  🚪 Salir"
+    box_row "$CYAN" "${YELLOW}[6]${R}  Crear certificado SSL"
+    box_row "$CYAN" "${YELLOW}[7]${R}  Remover el panel"
+    box_row "$CYAN" "${YELLOW}[8]${R}  Salir"
 
     box_bottom "$CYAN"
 
@@ -963,7 +952,7 @@ main() {
                 box_top "$CYAN"
 
                 box_row "$CYAN" \
-                    "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
+                    "${GREEN}${B}Gracias por utilizar AWS Manager${R}"
 
                 box_row "$CYAN" \
                     "${GRAY}Hasta pronto.${R}"
