@@ -32,8 +32,9 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 ENABLED_PENDING_DISTRIBUTIONS="N/D"
 
-BOX_INNER=54
-CARD_INNER=24
+# Anchos fijos para mantener la interfaz alineada.
+BOX_INNER=48
+CARD_INNER=22
 CARD_GAP=2
 
 # ────────────────────────────────────────────────────────────────
@@ -61,12 +62,16 @@ fi
 # MEDICIÓN DE ANCHO VISIBLE
 # ────────────────────────────────────────────────────────────────
 
+strip_ansi() {
+    printf '%b' "$1" |
+        sed -E $'s/\033\\[[0-9;?]*[[:alpha:]]//g'
+}
+
 visible_width() {
     local value="$1"
     local clean
 
-    clean="$(printf '%b' "$value" |
-        sed -E $'s/\033\\[[0-9;?]*[[:alpha:]]//g')"
+    clean="$(strip_ansi "$value")"
 
     printf '%s' "$clean" |
         awk '
@@ -86,11 +91,6 @@ visible_width() {
         '
 }
 
-strip_ansi() {
-    printf '%b' "$1" |
-        sed -E $'s/\033\\[[0-9;?]*[[:alpha:]]//g'
-}
-
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -107,30 +107,56 @@ repeat_char() {
 }
 
 # ────────────────────────────────────────────────────────────────
+# AJUSTE DE CONTENIDO A UN ANCHO FIJO
+# ────────────────────────────────────────────────────────────────
+
+fit_text() {
+    local content="$1"
+    local target_width="$2"
+    local width
+    local padding
+
+    width="$(visible_width "$content")"
+
+    # Recortar únicamente cuando el contenido supera el espacio.
+    # El recorte se realiza sobre el texto sin colores ANSI.
+    if ((width > target_width)); then
+        content="$(strip_ansi "$content")"
+        content="${content:0:target_width}"
+        width="$(visible_width "$content")"
+    fi
+
+    padding=$((target_width - width))
+
+    printf '%b%*s' "$content" "$padding" ""
+}
+
+# ────────────────────────────────────────────────────────────────
 # FILAS DE CUADROS
 # ────────────────────────────────────────────────────────────────
 
 box_row() {
     local color="$1"
     local content="$2"
-    local max_width=$((BOX_INNER - 2))
+    local inner_width=$((BOX_INNER - 2))
     local width
     local padding
-    local clean
 
     width="$(visible_width "$content")"
 
-    if ((width > max_width)); then
-        clean="$(strip_ansi "$content")"
-        content="${clean:0:max_width}"
+    if ((width > inner_width - 1)); then
+        content="$(strip_ansi "$content")"
+        content="${content:0:$((inner_width - 1))}"
         width="$(visible_width "$content")"
     fi
 
-    padding=$((max_width - width))
+    padding=$((inner_width - width - 1))
 
-    printf '%b│%b%b%s%*s%b│%b\n' \
+    ((padding < 0)) && padding=0
+
+    printf '%b│%b %b%*s%b│%b\n' \
         "$color" "$R" \
-        " " "$content" "$padding" "" \
+        "$content" "$padding" "" \
         "$color" "$R"
 }
 
@@ -139,6 +165,7 @@ box_top() {
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
+
     printf '%b  ╭%s╮%b\n' "$color" "$horizontal" "$R"
 }
 
@@ -147,6 +174,7 @@ box_bottom() {
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
+
     printf '%b  ╰%s╯%b\n' "$color" "$horizontal" "$R"
 }
 
@@ -155,6 +183,7 @@ box_separator() {
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
+
     printf '%b  ├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
@@ -202,22 +231,23 @@ card_border() {
 card_row() {
     local color="$1"
     local content="$2"
-    local max_width="$CARD_INNER"
     local width
     local padding
-    local clean
 
     width="$(visible_width "$content")"
 
-    if ((width > max_width)); then
-        clean="$(strip_ansi "$content")"
-        content="${clean:0:max_width}"
+    # El ancho interior de la tarjeta incluye un espacio inicial.
+    if ((width > CARD_INNER - 1)); then
+        content="$(strip_ansi "$content")"
+        content="${content:0:$((CARD_INNER - 1))}"
         width="$(visible_width "$content")"
     fi
 
-    padding=$((max_width - width))
+    padding=$((CARD_INNER - width - 1))
 
-    printf '%b│%b %s%*s%b│%b' \
+    ((padding < 0)) && padding=0
+
+    printf '%b│%b %b%*s%b│%b' \
         "$color" "$R" \
         "$content" "$padding" "" \
         "$color" "$R"
@@ -238,50 +268,43 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si el panel ya se ejecuta desde su ubicación instalada,
-    # continuar normalmente sin reinstalar ni crear copias.
+    # Si ya se ejecuta desde la ubicación instalada,
+    # continuar sin reinstalar.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
         return 0
     fi
 
-    # Verificar que exista el archivo de origen.
     if [[ ! -f "$source_path" ]]; then
         printf '%b\n' "${RED}✖ No se encuentra el archivo del panel.${R}"
         exit 1
     fi
 
-    # Crear el directorio de instalación si no existe.
     if ! mkdir -p -- "$BIN_DIR"; then
         printf '%b\n' "${RED}✖ No se pudo crear ${BIN_DIR}.${R}"
         exit 1
     fi
 
-    # Crear un archivo temporal en el mismo directorio.
-    # Esto permite reemplazar el ejecutable sin generar respaldos.
+    # El temporal se crea en el mismo directorio para permitir
+    # reemplazar el ejecutable de manera segura mediante mv.
     temp_install="$(mktemp "${BIN_DIR}/.aws-manager.XXXXXX" 2>/dev/null)" || {
         printf '%b\n' "${RED}✖ No se pudo crear el archivo temporal.${R}"
         exit 1
     }
 
-    # Copiar la nueva versión al archivo temporal.
     if ! cp -- "$source_path" "$temp_install"; then
         rm -f -- "$temp_install"
         printf '%b\n' "${RED}✖ No se pudo preparar la nueva versión.${R}"
         exit 1
     fi
 
-    # Establecer permisos antes de reemplazar el ejecutable.
     if ! chmod 700 "$temp_install"; then
         rm -f -- "$temp_install"
         printf '%b\n' "${RED}✖ No se pudieron establecer los permisos.${R}"
         exit 1
     fi
 
-    # Sustituir el ejecutable anterior.
-    # Al utilizar mv dentro del mismo sistema de archivos,
-    # se evita sobrescribir directamente el archivo en ejecución.
     if ! mv -f -- "$temp_install" "$BIN_PATH"; then
         rm -f -- "$temp_install"
         printf '%b\n' "${RED}✖ No se pudo instalar aws-manager.${R}"
@@ -291,7 +314,6 @@ install_manager() {
     printf '\n%b\n' "${GREEN}✔ AWS Manager actualizado correctamente.${R}"
     printf '%b\n\n' "${GRAY}Comando: ${BIN_PATH}${R}"
 
-    # Ejecutar la versión recién instalada.
     exec "$BIN_PATH" "$@"
 }
 
@@ -346,10 +368,6 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
-    # ────────────────────────────────────────────────────────────
-    # VERIFICAR CREDENCIALES
-    # ────────────────────────────────────────────────────────────
-
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
 
@@ -357,10 +375,7 @@ load_aws_statistics() {
         return 1
     fi
 
-    # ────────────────────────────────────────────────────────────
-    # CONSULTAR DISTRIBUCIONES CLOUDFRONT
-    # ────────────────────────────────────────────────────────────
-
+    # Consultar distribuciones CloudFront.
     if ! distributions_json="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
@@ -374,9 +389,6 @@ load_aws_statistics() {
                 | type == "array"
             ' >/dev/null 2>&1; then
 
-            # Contar directamente los elementos de Items.
-            # No depender de DistributionList.Quantity.
-
             total="$(
                 printf '%s' "$distributions_json" |
                 jq -r '
@@ -385,7 +397,6 @@ load_aws_statistics() {
                 '
             )"
 
-            # Distribuciones habilitadas y desplegadas.
             enabled="$(
                 printf '%s' "$distributions_json" |
                 jq -r '
@@ -400,7 +411,6 @@ load_aws_statistics() {
                 '
             )"
 
-            # Distribuciones deshabilitadas.
             disabled="$(
                 printf '%s' "$distributions_json" |
                 jq -r '
@@ -412,8 +422,6 @@ load_aws_statistics() {
                 '
             )"
 
-            # Distribuciones habilitadas cuyo despliegue
-            # todavía no ha terminado.
             enabled_pending="$(
                 printf '%s' "$distributions_json" |
                 jq -r '
@@ -428,7 +436,6 @@ load_aws_statistics() {
                 '
             )"
 
-            # Validar que los resultados sean números enteros.
             if [[ "$total" =~ ^[0-9]+$ &&
                   "$enabled" =~ ^[0-9]+$ &&
                   "$disabled" =~ ^[0-9]+$ &&
@@ -448,10 +455,7 @@ load_aws_statistics() {
         fi
     fi
 
-    # ────────────────────────────────────────────────────────────
-    # CONSULTAR CERTIFICADOS SSL DE ACM
-    # ────────────────────────────────────────────────────────────
-
+    # Consultar certificados SSL de ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -480,19 +484,13 @@ load_aws_statistics() {
         fi
     fi
 
-    # ────────────────────────────────────────────────────────────
-    # ESTADO FINAL DE LAS CONSULTAS
-    # ────────────────────────────────────────────────────────────
-
+    # Determinar el estado de las consultas.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="Conectado a AWS"
-
     elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
         AWS_CONNECTION_STATUS="CloudFront OK; error en ACM"
-
     elif ((CF_STATS_OK == 0 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="ACM OK; error en CloudFront"
-
     else
         AWS_CONNECTION_STATUS="Error consultando AWS"
     fi
@@ -550,14 +548,31 @@ header() {
 
 status_bar() {
     local status
+    local status_text
+    local version_text
+    local available_width
+    local status_width
+    local version_width
+    local spaces
 
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
-        status="${GREEN}✔ AWS conectado${R}                         ${YELLOW}${VERSION}${R}"
+        status_text="${GREEN}✔ AWS conectado${R}"
     elif ((CF_STATS_OK == 1 || ACM_STATS_OK == 1)); then
-        status="${YELLOW}⚠ Datos parciales de AWS${R}                ${YELLOW}${VERSION}${R}"
+        status_text="${YELLOW}⚠ Datos parciales de AWS${R}"
     else
-        status="${RED}✖ AWS sin datos${R}                         ${YELLOW}${VERSION}${R}"
+        status_text="${RED}✖ AWS sin datos${R}"
     fi
+
+    version_text="${YELLOW}${VERSION}${R}"
+
+    status_width="$(visible_width "$status_text")"
+    version_width="$(visible_width "$version_text")"
+
+    available_width=$((BOX_INNER - status_width - version_width - 4))
+    ((available_width < 1)) && available_width=1
+
+    spaces="$(repeat_char ' ' "$available_width")"
+    status="${status_text}${spaces}${version_text}"
 
     box_top "$GRAY"
     box_row "$GRAY" "$status"
@@ -582,63 +597,54 @@ dashboard_cards() {
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
     # FILA 1: BORDES SUPERIORES
-
     card_border "$BLUE" top
     printf '%s' "$gap"
     card_border "$GREEN" top
     printf '\n'
 
     # FILA 1: TÍTULOS
-
     card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
     printf '\n'
 
     # FILA 1: VALORES
-
     card_row "$BLUE" "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
     printf '\n'
 
     # FILA 1: BORDES INFERIORES
-
     card_border "$BLUE" bottom
     printf '%s' "$gap"
     card_border "$GREEN" bottom
     printf '\n\n'
 
     # FILA 2: BORDES SUPERIORES
-
     card_border "$YELLOW" top
     printf '%s' "$gap"
     card_border "$MAGENTA" top
     printf '\n'
 
     # FILA 2: TÍTULOS
-
     card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
     printf '\n'
 
     # FILA 2: VALORES
-
     card_row "$YELLOW" "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "${WHITE}${B}${SSL_CERTIFICATES}${R}"
     printf '\n'
 
     # FILA 2: BORDES INFERIORES
-
     card_border "$YELLOW" bottom
     printf '%s' "$gap"
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
     # ESTADO DE CONEXIÓN
-
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
@@ -646,7 +652,6 @@ dashboard_cards() {
     fi
 
     # INFORMACIÓN DE CLOUDFRONT
-
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
@@ -659,7 +664,6 @@ dashboard_cards() {
     fi
 
     # INFORMACIÓN DE ACM
-
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
@@ -674,8 +678,6 @@ dashboard_cards() {
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
-    # Actualizar estadísticas antes de dibujar el panel.
-    # Si una consulta falla, las demás pueden seguir funcionando.
     load_aws_statistics || true
 
     header
