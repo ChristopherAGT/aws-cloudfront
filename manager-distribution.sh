@@ -37,15 +37,18 @@ ACM_STATS_OK=0
 # ────────────────────────────────────────────────────────────────
 
 # Panel general:
-# 2 espacios de margen + 46 columnas.
-# 1 borde + 1 espacio + 42 columnas + 1 espacio + 1 borde.
+# 2 espacios de margen.
+# 46 columnas totales, incluidos los bordes.
+# 44 columnas interiores entre los bordes.
 
 BOX_INNER=44
 BOX_CONTENT=42
 LINE_WIDTH=46
 
 # Tarjetas:
-# 1 borde + 1 espacio + 18 columnas + 1 espacio + 1 borde.
+# 22 columnas totales por tarjeta.
+# 20 columnas interiores.
+# 2 espacios entre las tarjetas.
 
 CARD_INNER=20
 CARD_CONTENT=18
@@ -76,7 +79,7 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# UTILIDADES DE TEXTO Y ALINEACIÓN
+# UTILIDADES DE TEXTO
 # ────────────────────────────────────────────────────────────────
 
 # Elimina secuencias ANSI.
@@ -98,9 +101,7 @@ sys.stdout.write(text)
 '
 }
 
-# Calcula el ancho visual del texto Unicode.
-# Ignora colores ANSI, caracteres de control, marcas combinantes
-# y selectores de variación.
+# Calcula el ancho visual aproximado del texto Unicode.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -124,47 +125,37 @@ while i < len(text):
     code = ord(char)
     category = unicodedata.category(char)
 
-    # Ignorar caracteres de control y formato.
     if category in ("Cc", "Cf", "Cs"):
         i += 1
         continue
 
-    # Ignorar marcas combinantes.
     if unicodedata.combining(char):
         i += 1
         continue
 
-    # Selectores de variación Unicode.
-    if (
-        0xFE00 <= code <= 0xFE0F
-        or 0xE0100 <= code <= 0xE01EF
-    ):
+    if 0xFE00 <= code <= 0xFE0F or 0xE0100 <= code <= 0xE01EF:
         i += 1
         continue
 
-    # Banderas: dos indicadores regionales forman un símbolo.
+    # Banderas.
     if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
-        if (
-            i + 1 < len(text)
-            and 0x1F1E6 <= ord(text[i + 1]) <= 0x1F1FF
-        ):
-            i += 1
+        if i + 1 < len(text):
+            next_code = ord(text[i + 1])
+
+            if 0x1F1E6 <= next_code <= 0x1F1FF:
+                i += 1
 
         i += 1
         continue
 
     # Emoji con selector de presentación.
-    if (
-        i + 1 < len(text)
-        and ord(text[i + 1]) == 0xFE0F
-    ):
+    if i + 1 < len(text) and ord(text[i + 1]) == 0xFE0F:
         width += 2
         i += 2
         continue
 
-    # Emojis y caracteres de ancho doble.
     if (
         unicodedata.east_asian_width(char) in ("W", "F")
         or 0x1F000 <= code <= 0x1FAFF
@@ -196,8 +187,13 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Ajusta el contenido a un ancho visual exacto.
-# Conserva los códigos ANSI cuando no es necesario recortar.
+# ────────────────────────────────────────────────────────────────
+# RELLENO DE TEXTO CON ANCHO FIJO
+# ────────────────────────────────────────────────────────────────
+
+# Convierte el texto en una representación de ancho fijo.
+# Los colores ANSI no cuentan como columnas.
+# El contenido que excede el espacio disponible se recorta.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -208,28 +204,26 @@ fit_text() {
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
-    # Recortar el contenido si supera el ancho disponible.
-    # El recorte se realiza sobre texto sin códigos ANSI para
-    # evitar dejar secuencias de color incompletas.
     if ((width > target_width)); then
         content="$plain"
-        width="$(visible_width "$content")"
 
-        while ((width > target_width)) && [[ -n "$content" ]]; do
+        while [[ -n "$content" ]] &&
+              (( $(visible_width "$content") > target_width )); do
             content="${content%?}"
-            width="$(visible_width "$content")"
         done
+
+        plain="$content"
+        width="$(visible_width "$plain")"
     fi
 
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    # Imprimir contenido y completar las columnas restantes.
     printf '%b' "$content"
     printf '%*s' "$padding" ''
 }
 
-# Centra el contenido según su ancho visual.
+# Centra el texto en un espacio fijo.
 center_text() {
     local content="$1"
     local total="$2"
@@ -285,7 +279,7 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Cada fila ocupa exactamente el ancho interior del marco.
+# Cada fila utiliza exactamente 42 columnas interiores.
 box_row() {
     local color="$1"
     local content="$2"
@@ -295,7 +289,7 @@ box_row() {
     printf ' %b│%b\n' "$color" "$R"
 }
 
-# Línea divisoria de ancho fijo.
+# Línea divisoria alineada con el ancho del panel.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -324,7 +318,7 @@ card_border() {
     esac
 }
 
-# Cada fila de tarjeta mantiene un ancho interior de 20 columnas.
+# Cada tarjeta mantiene exactamente 22 columnas totales.
 card_row() {
     local color="$1"
     local content="$2"
@@ -349,7 +343,6 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si ya se ejecuta el archivo instalado, no volver a copiarlo.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -447,7 +440,6 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
-    # Verificar credenciales.
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
 
@@ -455,7 +447,6 @@ load_aws_statistics() {
         return 1
     fi
 
-    # Consultar distribuciones de CloudFront.
     if distributions_json="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
@@ -529,7 +520,6 @@ load_aws_statistics() {
         fi
     fi
 
-    # Consultar certificados emitidos en ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -558,7 +548,6 @@ load_aws_statistics() {
         fi
     fi
 
-    # Determinar el estado de las consultas.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="Conectado a AWS"
     elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
@@ -652,7 +641,7 @@ section_title() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# DASHBOARD: CUATRO TARJETAS
+# DASHBOARD
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
@@ -660,7 +649,7 @@ dashboard_cards() {
 
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # Primera fila: distribuciones y operativas.
+    # Primera fila.
     printf '  '
     card_border "$BLUE" top
     printf '%s' "$gap"
@@ -685,7 +674,7 @@ dashboard_cards() {
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # Segunda fila: deshabilitadas y certificados.
+    # Segunda fila.
     printf '  '
     card_border "$YELLOW" top
     printf '%s' "$gap"
@@ -717,7 +706,6 @@ dashboard_cards() {
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
-    # Información de CloudFront.
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
@@ -729,7 +717,6 @@ dashboard_cards() {
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
 
-    # Información de ACM.
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
@@ -777,12 +764,10 @@ dashboard() {
     box_bottom "$CYAN"
 
     printf '\n'
-
     printf '%b\n' \
         "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
 
     printf '\n'
-
     printf '%b' "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
 }
 
@@ -885,6 +870,7 @@ uninstall_manager() {
                     "${RED}✖ No se pudo eliminar el comando.${R}"
                 pause
             fi
+
             exit 0
             ;;
 
@@ -896,7 +882,7 @@ uninstall_manager() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# MENÚ Y CONTROL DE OPCIONES
+# CONTROL DE OPCIONES
 # ────────────────────────────────────────────────────────────────
 
 main() {
