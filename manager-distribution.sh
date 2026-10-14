@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
-# ╔══════════════════════════════════════════════════════════════╗
-# ║                 AWS CLOUDFRONT MANAGER                       ║
-# ║                  Dashboard administrativo                    ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ==============================================================
+# AWS CLOUDFRONT MANAGER
+# Panel administrativo para AWS CloudFront
+# Versión: v1.1
+# ==============================================================
 
 set -o pipefail
 export LC_ALL="${LC_ALL:-C.UTF-8}"
@@ -15,10 +16,18 @@ export LC_ALL="${LC_ALL:-C.UTF-8}"
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
-VERSION="v1.0"
+VERSION="v1.1"
 
-# Anchos fijos de los cuadros.
-# El ancho exterior incluye los dos bordes verticales.
+AWS_REGION="us-east-1"
+AWS_ACM_REGION="us-east-1"
+
+TOTAL_DISTRIBUTIONS="N/D"
+ENABLED_DISTRIBUTIONS="N/D"
+DISABLED_DISTRIBUTIONS="N/D"
+SSL_CERTIFICATES="N/D"
+
+AWS_CONNECTION_STATUS="Sin verificar"
+
 BOX_INNER=54
 CARD_INNER=24
 CARD_GAP=2
@@ -48,8 +57,6 @@ fi
 # MEDICIÓN DE ANCHO VISIBLE
 # ────────────────────────────────────────────────────────────────
 
-# Elimina secuencias ANSI y mide caracteres Unicode por columnas.
-# Requiere Bash, sed, awk y util-linux/coreutils habituales.
 visible_width() {
     local value="$1"
     local clean
@@ -64,8 +71,6 @@ visible_width() {
             for (i = 1; i <= length($0); i++) {
                 c = substr($0, i, 1)
 
-                # Caracteres Unicode que normalmente ocupan
-                # dos columnas en terminales modernas.
                 if (c ~ /[☁🟢🟡🔐🚀📊⚙️🔄🗑️🧹🚪✔✖⚠❯ℹ◈]/) {
                     width += 2
                 } else {
@@ -77,13 +82,11 @@ visible_width() {
         '
 }
 
-# Convierte texto con códigos ANSI a texto visible para recortarlo.
 strip_ansi() {
     printf '%b' "$1" |
         sed -E $'s/\033\\[[0-9;?]*[[:alpha:]]//g'
 }
 
-# Repite un carácter el número de veces indicado.
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -100,11 +103,9 @@ repeat_char() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# FILAS DE CUADROS CON ANCHO FIJO
+# FILAS DE CUADROS
 # ────────────────────────────────────────────────────────────────
 
-# Dibuja una fila interior con ancho exterior BOX_INNER + 2.
-# El contenido se recorta si supera el espacio disponible.
 box_row() {
     local color="$1"
     local content="$2"
@@ -129,7 +130,6 @@ box_row() {
         "$color" "$R"
 }
 
-# Borde superior fijo.
 box_top() {
     local color="$1"
     local horizontal
@@ -138,7 +138,6 @@ box_top() {
     printf '%b  ╭%s╮%b\n' "$color" "$horizontal" "$R"
 }
 
-# Borde inferior fijo.
 box_bottom() {
     local color="$1"
     local horizontal
@@ -147,7 +146,6 @@ box_bottom() {
     printf '%b  ╰%s╯%b\n' "$color" "$horizontal" "$R"
 }
 
-# Separador interior fijo.
 box_separator() {
     local color="$1"
     local horizontal
@@ -156,8 +154,6 @@ box_separator() {
     printf '%b  ├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Centra texto visible dentro de un espacio determinado.
-# Los códigos ANSI no cuentan como caracteres visibles.
 center_text() {
     local content="$1"
     local total="$2"
@@ -179,7 +175,7 @@ center_text() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# TARJETAS CON ANCHO FIJO
+# TARJETAS
 # ────────────────────────────────────────────────────────────────
 
 card_border() {
@@ -199,11 +195,10 @@ card_border() {
     esac
 }
 
-# Cada tarjeta mide CARD_INNER + 2 columnas exteriores.
 card_row() {
     local color="$1"
     local content="$2"
-    local max_width=$((CARD_INNER))
+    local max_width="$CARD_INNER"
     local width
     local padding
     local clean
@@ -230,11 +225,29 @@ card_row() {
 
 install_manager() {
     local source_path
+    local resolved_bin
+    local resolved_source
 
-    source_path="$(readlink -f -- "$0" 2>/dev/null || printf '%s' "$0")"
+    source_path="$0"
 
+    resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
+    resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
+
+    if [[ -n "$resolved_source" && -n "$resolved_bin" &&
+          "$resolved_source" == "$resolved_bin" ]]; then
+        return 0
+    fi
+
+    # Evitar reinstalar cuando el script ya se ejecuta desde
+    # la ruta instalada, aunque el archivo se invoque mediante
+    # un nombre relativo.
     if [[ "$source_path" == "$BIN_PATH" ]]; then
         return 0
+    fi
+
+    if [[ ! -f "$source_path" ]]; then
+        printf '%b\n' "${RED}✖ No se encuentra el archivo del panel.${R}"
+        exit 1
     fi
 
     mkdir -p "$BIN_DIR" || {
@@ -252,13 +265,8 @@ install_manager() {
         exit 1
     }
 
-    case ":${PATH}:" in
-        *":${BIN_DIR}:"*) ;;
-        *) export PATH="${BIN_DIR}:${PATH}" ;;
-    esac
-
     printf '\n%b\n' "${GREEN}✔ AWS Manager instalado correctamente.${R}"
-    printf '%b\n\n' "${GRAY}Comando: aws-manager${R}"
+    printf '%b\n\n' "${GRAY}Comando: ${BIN_PATH}${R}"
 
     exec "$BIN_PATH" "$@"
 }
@@ -276,12 +284,133 @@ check_dependencies() {
     command -v bash >/dev/null 2>&1 || missing+=("bash")
     command -v sed  >/dev/null 2>&1 || missing+=("sed")
     command -v awk  >/dev/null 2>&1 || missing+=("awk")
+    command -v jq   >/dev/null 2>&1 || missing+=("jq")
+    command -v aws  >/dev/null 2>&1 || missing+=("aws-cli")
+    command -v mktemp >/dev/null 2>&1 || missing+=("mktemp")
 
     if ((${#missing[@]} > 0)); then
-        printf '%b\n' "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
-        printf '%b\n' "${YELLOW}Instálalas con el gestor de paquetes.${R}"
+        printf '\n%b\n' \
+            "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
+
+        printf '%b\n' \
+            "${YELLOW}Instala las herramientas faltantes y vuelve a ejecutar el panel.${R}"
+
         exit 1
     fi
+}
+
+# ────────────────────────────────────────────────────────────────
+# CONSULTA REAL A AWS
+# ────────────────────────────────────────────────────────────────
+
+load_aws_statistics() {
+    local distributions_json
+    local certificates_json
+    local total
+    local enabled
+    local disabled
+    local certificates
+
+    TOTAL_DISTRIBUTIONS="N/D"
+    ENABLED_DISTRIBUTIONS="N/D"
+    DISABLED_DISTRIBUTIONS="N/D"
+    SSL_CERTIFICATES="N/D"
+    AWS_CONNECTION_STATUS="Error de conexión"
+
+    # Verificar credenciales y acceso a AWS.
+    if ! aws sts get-caller-identity \
+        --output json >/dev/null 2>&1; then
+
+        AWS_CONNECTION_STATUS="Error de autenticación"
+        return 1
+    fi
+
+    # Obtener todas las distribuciones. AWS CLI pagina
+    # automáticamente los resultados por defecto.
+    if ! distributions_json="$(
+        aws cloudfront list-distributions \
+            --output json 2>/dev/null
+    )"; then
+
+        AWS_CONNECTION_STATUS="Error consultando CloudFront"
+        return 1
+    fi
+
+    # Validar la estructura de la respuesta.
+    if ! printf '%s' "$distributions_json" |
+        jq -e '.DistributionList.Items | type == "array"' \
+        >/dev/null 2>&1; then
+
+        AWS_CONNECTION_STATUS="Respuesta de CloudFront inválida"
+        return 1
+    fi
+
+    total="$(
+        printf '%s' "$distributions_json" |
+        jq -r '.DistributionList.Quantity // 0'
+    )"
+
+    # Operativas: habilitadas y completamente desplegadas.
+    enabled="$(
+        printf '%s' "$distributions_json" |
+        jq '
+            [
+                .DistributionList.Items[]?
+                | select(
+                    .Enabled == true
+                    and .Status == "Deployed"
+                )
+            ]
+            | length
+        '
+    )"
+
+    # Deshabilitadas administrativamente.
+    disabled="$(
+        printf '%s' "$distributions_json" |
+        jq '
+            [
+                .DistributionList.Items[]?
+                | select(.Enabled == false)
+            ]
+            | length
+        '
+    )"
+
+    # Guardar las estadísticas de CloudFront aunque ACM falle.
+    TOTAL_DISTRIBUTIONS="$total"
+    ENABLED_DISTRIBUTIONS="$enabled"
+    DISABLED_DISTRIBUTIONS="$disabled"
+
+    # Certificados ACM emitidos en la región de CloudFront.
+    if ! certificates_json="$(
+        aws acm list-certificates \
+            --region "$AWS_ACM_REGION" \
+            --certificate-statuses ISSUED \
+            --output json 2>/dev/null
+    )"; then
+
+        AWS_CONNECTION_STATUS="CloudFront disponible; error en ACM"
+        return 1
+    fi
+
+    if ! printf '%s' "$certificates_json" |
+        jq -e '.CertificateSummaryList | type == "array"' \
+        >/dev/null 2>&1; then
+
+        AWS_CONNECTION_STATUS="Respuesta de ACM inválida"
+        return 1
+    fi
+
+    certificates="$(
+        printf '%s' "$certificates_json" |
+        jq '.CertificateSummaryList | length'
+    )"
+
+    SSL_CERTIFICATES="$certificates"
+    AWS_CONNECTION_STATUS="Conectado a AWS"
+
+    return 0
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -348,7 +477,6 @@ section_title() {
 
 # ────────────────────────────────────────────────────────────────
 # TARJETAS DEL DASHBOARD
-# Dos columnas por dos filas.
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
@@ -365,13 +493,13 @@ dashboard_cards() {
     # Fila 1: títulos.
     card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
     printf '%s' "$gap"
-    card_row "$GREEN" "🟢 ${GREEN}Habilitadas${R}"
+    card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
     printf '\n'
 
     # Fila 1: valores.
-    card_row "$BLUE" "${WHITE}${B}Sin consultar${R}"
+    card_row "$BLUE" "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
-    card_row "$GREEN" "${WHITE}${B}Sin consultar${R}"
+    card_row "$GREEN" "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
     printf '\n'
 
     # Fila 1: bordes inferiores.
@@ -393,9 +521,9 @@ dashboard_cards() {
     printf '\n'
 
     # Fila 2: valores.
-    card_row "$YELLOW" "${WHITE}${B}Sin consultar${R}"
+    card_row "$YELLOW" "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
-    card_row "$MAGENTA" "${WHITE}${B}Sin consultar${R}"
+    card_row "$MAGENTA" "${WHITE}${B}${SSL_CERTIFICATES}${R}"
     printf '\n'
 
     # Fila 2: bordes inferiores.
@@ -404,8 +532,18 @@ dashboard_cards() {
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
+    # Estado de conexión.
+    if [[ "$AWS_CONNECTION_STATUS" == "Conectado a AWS" ]]; then
+        printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
+    else
+        printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
+    fi
+
     printf '%b\n' \
-        "${GRAY}  ℹ Las estadísticas requieren una consulta real a AWS.${R}"
+        "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
+
+    printf '%b\n' \
+        "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -413,6 +551,8 @@ dashboard_cards() {
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
+    load_aws_statistics
+
     header
     status_bar
 
@@ -452,7 +592,7 @@ dashboard() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# EJECUCIÓN SEGURA DE MÓDULOS REMOTOS
+# EJECUCIÓN DE MÓDULOS REMOTOS
 # ────────────────────────────────────────────────────────────────
 
 run_module() {
