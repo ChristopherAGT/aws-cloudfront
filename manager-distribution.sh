@@ -36,14 +36,15 @@ ACM_STATS_OK=0
 # DIMENSIONES DEL PANEL
 # ────────────────────────────────────────────────────────────────
 #
-# Marco exterior: 46 columnas.
-# Esquinas incluidas: 1 + 44 + 1 = 46.
+# Panel exterior: 46 columnas visibles.
+# 1 borde + 44 caracteres horizontales + 1 borde.
 #
 # Filas:
-# │ + espacio + 42 columnas + espacio + │ = 46.
+# 1 borde + 1 espacio + 42 contenido
+# + 1 espacio + 1 borde = 46.
 #
-# Tarjetas:
-# 22 + 2 espacios de separación + 22 = 46.
+# Dashboard:
+# 22 columnas + 2 espacios + 22 columnas = 46.
 #
 # ────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ fi
 # UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
+# Elimina secuencias ANSI sin alterar el contenido visible.
 strip_ansi() {
     printf '%s' "$1" |
         python3 -c '
@@ -90,15 +92,18 @@ import re
 import sys
 
 text = sys.stdin.read()
+
 text = re.sub(
     r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
     "",
     text
 )
+
 sys.stdout.write(text)
 '
 }
 
+# Calcula el ancho visual de texto Unicode.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -121,14 +126,17 @@ while i < len(text):
     char = text[i]
     code = ord(char)
 
+    # Selectores de presentación y unión de emojis.
     if code in (0x200D, 0xFE0E, 0xFE0F):
         i += 1
         continue
 
+    # Marcas combinantes y selectores suplementarios.
     if unicodedata.combining(char) or 0xE0100 <= code <= 0xE01EF:
         i += 1
         continue
 
+    # Banderas formadas por indicadores regionales.
     if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
@@ -141,11 +149,13 @@ while i < len(text):
         i += 1
         continue
 
+    # Símbolos con selector de presentación emoji.
     if i + 1 < len(text) and ord(text[i + 1]) == 0xFE0F:
         width += 2
         i += 2
         continue
 
+    # Emojis y caracteres de ancho doble.
     if (
         unicodedata.east_asian_width(char) in ("W", "F")
         or 0x1F000 <= code <= 0x1FAFF
@@ -161,6 +171,7 @@ print(width)
 '
 }
 
+# Genera caracteres repetidos.
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -176,8 +187,9 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Ajusta el texto al ancho visual disponible.
-# Si se necesita recortar, se eliminan primero los colores.
+# Ajusta el texto al ancho visual solicitado.
+# Si el texto cabe, conserva sus colores ANSI.
+# Si necesita recortarse, primero elimina los colores.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -191,7 +203,6 @@ fit_text() {
     if ((width > target_width)); then
         content="$plain"
 
-        # Elimina caracteres completos bajo la configuración UTF-8.
         while ((width > target_width)) && [[ -n "$content" ]]; do
             content="${content%?}"
             width="$(visible_width "$content")"
@@ -204,6 +215,7 @@ fit_text() {
     printf '%b%*s' "$content" "$padding" ""
 }
 
+# Centra texto según su ancho visual.
 center_text() {
     local content="$1"
     local total="$2"
@@ -227,7 +239,7 @@ center_text() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# MARCOS DEL PANEL
+# MARCOS DEL PANEL GENERAL
 # ────────────────────────────────────────────────────────────────
 
 box_top() {
@@ -257,7 +269,8 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Ancho total del marco: 46 columnas.
+# Cada fila ocupa 46 columnas visibles, sin contar
+# los dos espacios de margen que preceden al panel.
 box_row() {
     local color="$1"
     local content="$2"
@@ -269,6 +282,7 @@ box_row() {
         "$color" "$R" "$R" "$fitted" "$R" "$color" "$R"
 }
 
+# Línea divisoria de 46 columnas.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -297,8 +311,7 @@ card_border() {
     esac
 }
 
-# Cada tarjeta mide 22 columnas:
-# 1 borde + 1 espacio + 18 contenido + 1 espacio + 1 borde.
+# Cada tarjeta ocupa 22 columnas visibles.
 card_row() {
     local color="$1"
     local content="$2"
@@ -423,13 +436,15 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
+    # Verificar credenciales.
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
+
         AWS_CONNECTION_STATUS="Error de autenticación"
         return 1
     fi
 
-    # Distribuciones de CloudFront.
+    # Consultar distribuciones de CloudFront.
     if distributions_json="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
@@ -503,7 +518,7 @@ load_aws_statistics() {
         fi
     fi
 
-    # Certificados emitidos en ACM.
+    # Consultar certificados emitidos en ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -532,6 +547,7 @@ load_aws_statistics() {
         fi
     fi
 
+    # Determinar el estado de las consultas.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="Conectado a AWS"
     elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
@@ -625,7 +641,7 @@ section_title() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# DASHBOARD: CUATRO TARJETAS COMPACTAS
+# DASHBOARD: CUATRO TARJETAS
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
@@ -633,7 +649,7 @@ dashboard_cards() {
 
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # Fila 1: distribuciones y operativas.
+    # Primera fila: distribuciones y operativas.
     printf '  '
     card_border "$BLUE" top
     printf '%s' "$gap"
@@ -658,7 +674,7 @@ dashboard_cards() {
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # Fila 2: deshabilitadas y certificados.
+    # Segunda fila: deshabilitadas y certificados.
     printf '  '
     card_border "$YELLOW" top
     printf '%s' "$gap"
@@ -683,7 +699,7 @@ dashboard_cards() {
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
-    # Estado de AWS.
+    # Estado de conexión.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
