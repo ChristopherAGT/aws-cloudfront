@@ -8,6 +8,7 @@
 
 set -o pipefail
 export LC_ALL="${LC_ALL:-C.UTF-8}"
+export AWS_PAGER=""
 
 # ────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN
@@ -19,7 +20,7 @@ BIN_PATH="${BIN_DIR}/aws-manager"
 VERSION="v1.1"
 
 AWS_REGION="us-east-1"
-AWS_ACM_REGION="us-east-1"
+AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
 
 TOTAL_DISTRIBUTIONS="N/D"
 ENABLED_DISTRIBUTIONS="N/D"
@@ -27,6 +28,9 @@ DISABLED_DISTRIBUTIONS="N/D"
 SSL_CERTIFICATES="N/D"
 
 AWS_CONNECTION_STATUS="Sin verificar"
+CF_STATS_OK=0
+ACM_STATS_OK=0
+ENABLED_PENDING_DISTRIBUTIONS="N/D"
 
 BOX_INNER=54
 CARD_INNER=24
@@ -233,14 +237,12 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    if [[ -n "$resolved_source" && -n "$resolved_bin" &&
+    if [[ -n "$resolved_source" &&
+          -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
         return 0
     fi
 
-    # Evitar reinstalar cuando el script ya se ejecuta desde
-    # la ruta instalada, aunque el archivo se invoque mediante
-    # un nombre relativo.
     if [[ "$source_path" == "$BIN_PATH" ]]; then
         return 0
     fi
@@ -282,10 +284,10 @@ check_dependencies() {
 
     command -v curl >/dev/null 2>&1 || missing+=("curl")
     command -v bash >/dev/null 2>&1 || missing+=("bash")
-    command -v sed  >/dev/null 2>&1 || missing+=("sed")
-    command -v awk  >/dev/null 2>&1 || missing+=("awk")
-    command -v jq   >/dev/null 2>&1 || missing+=("jq")
-    command -v aws  >/dev/null 2>&1 || missing+=("aws-cli")
+    command -v sed >/dev/null 2>&1 || missing+=("sed")
+    command -v awk >/dev/null 2>&1 || missing+=("awk")
+    command -v jq >/dev/null 2>&1 || missing+=("jq")
+    command -v aws >/dev/null 2>&1 || missing+=("aws-cli")
     command -v mktemp >/dev/null 2>&1 || missing+=("mktemp")
 
     if ((${#missing[@]} > 0)); then
@@ -309,15 +311,23 @@ load_aws_statistics() {
     local total
     local enabled
     local disabled
+    local enabled_pending
     local certificates
 
     TOTAL_DISTRIBUTIONS="N/D"
     ENABLED_DISTRIBUTIONS="N/D"
     DISABLED_DISTRIBUTIONS="N/D"
     SSL_CERTIFICATES="N/D"
-    AWS_CONNECTION_STATUS="Error de conexión"
+    ENABLED_PENDING_DISTRIBUTIONS="N/D"
 
-    # Verificar credenciales y acceso a AWS.
+    AWS_CONNECTION_STATUS="Error de conexión"
+    CF_STATS_OK=0
+    ACM_STATS_OK=0
+
+    # ────────────────────────────────────────────────────────────
+    # VERIFICAR CREDENCIALES
+    # ────────────────────────────────────────────────────────────
+
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
 
@@ -325,92 +335,154 @@ load_aws_statistics() {
         return 1
     fi
 
-    # Obtener todas las distribuciones. AWS CLI pagina
-    # automáticamente los resultados por defecto.
+    # ────────────────────────────────────────────────────────────
+    # CONSULTAR DISTRIBUCIONES CLOUDFRONT
+    # ────────────────────────────────────────────────────────────
+
     if ! distributions_json="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
     )"; then
 
         AWS_CONNECTION_STATUS="Error consultando CloudFront"
-        return 1
+    else
+        # Validar que la respuesta contenga la lista de elementos.
+        if printf '%s' "$distributions_json" |
+            jq -e '
+                (.DistributionList.Items // [])
+                | type == "array"
+            ' >/dev/null 2>&1; then
+
+            # CORRECCIÓN PRINCIPAL:
+            # Contar directamente los elementos de Items.
+            # No depender de DistributionList.Quantity,
+            # que puede aparecer como null en ciertas consultas.
+
+            total="$(
+                printf '%s' "$distributions_json" |
+                jq -r '
+                    (.DistributionList.Items // [])
+                    | length
+                '
+            )"
+
+            # Distribuciones habilitadas y desplegadas.
+            enabled="$(
+                printf '%s' "$distributions_json" |
+                jq -r '
+                    [
+                        (.DistributionList.Items // [])[]
+                        | select(
+                            .Enabled == true
+                            and .Status == "Deployed"
+                        )
+                    ]
+                    | length
+                '
+            )"
+
+            # Distribuciones deshabilitadas.
+            disabled="$(
+                printf '%s' "$distributions_json" |
+                jq -r '
+                    [
+                        (.DistributionList.Items // [])[]
+                        | select(.Enabled == false)
+                    ]
+                    | length
+                '
+            )"
+
+            # Distribuciones habilitadas cuyo despliegue
+            # todavía no ha terminado.
+            enabled_pending="$(
+                printf '%s' "$distributions_json" |
+                jq -r '
+                    [
+                        (.DistributionList.Items // [])[]
+                        | select(
+                            .Enabled == true
+                            and .Status != "Deployed"
+                        )
+                    ]
+                    | length
+                '
+            )"
+
+            # Validar que los resultados sean números enteros.
+            if [[ "$total" =~ ^[0-9]+$ &&
+                  "$enabled" =~ ^[0-9]+$ &&
+                  "$disabled" =~ ^[0-9]+$ &&
+                  "$enabled_pending" =~ ^[0-9]+$ ]]; then
+
+                TOTAL_DISTRIBUTIONS="$total"
+                ENABLED_DISTRIBUTIONS="$enabled"
+                DISABLED_DISTRIBUTIONS="$disabled"
+                ENABLED_PENDING_DISTRIBUTIONS="$enabled_pending"
+
+                CF_STATS_OK=1
+            else
+                AWS_CONNECTION_STATUS="Datos inválidos de CloudFront"
+            fi
+        else
+            AWS_CONNECTION_STATUS="Respuesta de CloudFront inválida"
+        fi
     fi
 
-    # Validar la estructura de la respuesta.
-    if ! printf '%s' "$distributions_json" |
-        jq -e '.DistributionList.Items | type == "array"' \
-        >/dev/null 2>&1; then
+    # ────────────────────────────────────────────────────────────
+    # CONSULTAR CERTIFICADOS SSL DE ACM
+    # ────────────────────────────────────────────────────────────
 
-        AWS_CONNECTION_STATUS="Respuesta de CloudFront inválida"
-        return 1
-    fi
-
-    total="$(
-        printf '%s' "$distributions_json" |
-        jq -r '.DistributionList.Quantity // 0'
-    )"
-
-    # Operativas: habilitadas y completamente desplegadas.
-    enabled="$(
-        printf '%s' "$distributions_json" |
-        jq '
-            [
-                .DistributionList.Items[]?
-                | select(
-                    .Enabled == true
-                    and .Status == "Deployed"
-                )
-            ]
-            | length
-        '
-    )"
-
-    # Deshabilitadas administrativamente.
-    disabled="$(
-        printf '%s' "$distributions_json" |
-        jq '
-            [
-                .DistributionList.Items[]?
-                | select(.Enabled == false)
-            ]
-            | length
-        '
-    )"
-
-    # Guardar las estadísticas de CloudFront aunque ACM falle.
-    TOTAL_DISTRIBUTIONS="$total"
-    ENABLED_DISTRIBUTIONS="$enabled"
-    DISABLED_DISTRIBUTIONS="$disabled"
-
-    # Certificados ACM emitidos en la región de CloudFront.
-    if ! certificates_json="$(
+    if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
             --certificate-statuses ISSUED \
             --output json 2>/dev/null
     )"; then
 
-        AWS_CONNECTION_STATUS="CloudFront disponible; error en ACM"
-        return 1
+        if printf '%s' "$certificates_json" |
+            jq -e '
+                (.CertificateSummaryList // [])
+                | type == "array"
+            ' >/dev/null 2>&1; then
+
+            certificates="$(
+                printf '%s' "$certificates_json" |
+                jq -r '
+                    (.CertificateSummaryList // [])
+                    | length
+                '
+            )"
+
+            if [[ "$certificates" =~ ^[0-9]+$ ]]; then
+                SSL_CERTIFICATES="$certificates"
+                ACM_STATS_OK=1
+            fi
+        fi
     fi
 
-    if ! printf '%s' "$certificates_json" |
-        jq -e '.CertificateSummaryList | type == "array"' \
-        >/dev/null 2>&1; then
+    # ────────────────────────────────────────────────────────────
+    # ESTADO FINAL DE LAS CONSULTAS
+    # ────────────────────────────────────────────────────────────
 
-        AWS_CONNECTION_STATUS="Respuesta de ACM inválida"
-        return 1
+    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
+        AWS_CONNECTION_STATUS="Conectado a AWS"
+
+    elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
+        AWS_CONNECTION_STATUS="CloudFront OK; error en ACM"
+
+    elif ((CF_STATS_OK == 0 && ACM_STATS_OK == 1)); then
+        AWS_CONNECTION_STATUS="ACM OK; error en CloudFront"
+
+    else
+        AWS_CONNECTION_STATUS="Error consultando AWS"
     fi
 
-    certificates="$(
-        printf '%s' "$certificates_json" |
-        jq '.CertificateSummaryList | length'
-    )"
+    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
+        return 0
+    fi
 
-    SSL_CERTIFICATES="$certificates"
-    AWS_CONNECTION_STATUS="Conectado a AWS"
-
-    return 0
+    return 1
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -460,7 +532,13 @@ header() {
 status_bar() {
     local status
 
-    status="${GREEN}✔ Panel listo${R}                         ${YELLOW}${VERSION}${R}"
+    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
+        status="${GREEN}✔ AWS conectado${R}                         ${YELLOW}${VERSION}${R}"
+    elif ((CF_STATS_OK == 1 || ACM_STATS_OK == 1)); then
+        status="${YELLOW}⚠ Datos parciales de AWS${R}                ${YELLOW}${VERSION}${R}"
+    else
+        status="${RED}✖ AWS sin datos${R}                         ${YELLOW}${VERSION}${R}"
+    fi
 
     box_top "$GRAY"
     box_row "$GRAY" "$status"
@@ -484,66 +562,92 @@ dashboard_cards() {
 
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # Fila 1: bordes superiores.
+    # FILA 1: BORDES SUPERIORES
+
     card_border "$BLUE" top
     printf '%s' "$gap"
     card_border "$GREEN" top
     printf '\n'
 
-    # Fila 1: títulos.
+    # FILA 1: TÍTULOS
+
     card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
     printf '\n'
 
-    # Fila 1: valores.
+    # FILA 1: VALORES
+
     card_row "$BLUE" "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
     card_row "$GREEN" "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
     printf '\n'
 
-    # Fila 1: bordes inferiores.
+    # FILA 1: BORDES INFERIORES
+
     card_border "$BLUE" bottom
     printf '%s' "$gap"
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # Fila 2: bordes superiores.
+    # FILA 2: BORDES SUPERIORES
+
     card_border "$YELLOW" top
     printf '%s' "$gap"
     card_border "$MAGENTA" top
     printf '\n'
 
-    # Fila 2: títulos.
+    # FILA 2: TÍTULOS
+
     card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
     printf '\n'
 
-    # Fila 2: valores.
+    # FILA 2: VALORES
+
     card_row "$YELLOW" "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
     printf '%s' "$gap"
     card_row "$MAGENTA" "${WHITE}${B}${SSL_CERTIFICATES}${R}"
     printf '\n'
 
-    # Fila 2: bordes inferiores.
+    # FILA 2: BORDES INFERIORES
+
     card_border "$YELLOW" bottom
     printf '%s' "$gap"
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
-    # Estado de conexión.
-    if [[ "$AWS_CONNECTION_STATUS" == "Conectado a AWS" ]]; then
+    # ESTADO DE CONEXIÓN
+
+    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
-    printf '%b\n' \
-        "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
+    # INFORMACIÓN DE CLOUDFRONT
 
-    printf '%b\n' \
-        "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
+    if ((CF_STATS_OK == 1)); then
+        printf '%b\n' \
+            "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
+
+        printf '%b\n' \
+            "${GRAY}  ℹ En despliegue: ${ENABLED_PENDING_DISTRIBUTIONS}.${R}"
+    else
+        printf '%b\n' \
+            "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
+    fi
+
+    # INFORMACIÓN DE ACM
+
+    if ((ACM_STATS_OK == 1)); then
+        printf '%b\n' \
+            "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
+    else
+        printf '%b\n' \
+            "${YELLOW}  ⚠ No se pudieron consultar los certificados de ACM.${R}"
+    fi
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -551,7 +655,9 @@ dashboard_cards() {
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
-    load_aws_statistics
+    # Actualizar estadísticas antes de dibujar el panel.
+    # Si una consulta falla, las demás pueden seguir funcionando.
+    load_aws_statistics || true
 
     header
     status_bar
@@ -684,6 +790,7 @@ uninstall_manager() {
                 "${GRAY}Los recursos de AWS permanecen intactos.${R}"
             exit 0
             ;;
+
         *)
             printf '\n%b\n' "${GRAY}Desinstalación cancelada.${R}"
             pause
@@ -738,6 +845,7 @@ main() {
                     s|S|si|SI|Si|sí|Sí|SÍ)
                         run_module "delete-distribution.sh"
                         ;;
+
                     *)
                         printf '%b\n' "${GRAY}Operación cancelada.${R}"
                         pause
@@ -757,10 +865,13 @@ main() {
                 printf '\n'
 
                 box_top "$CYAN"
+
                 box_row "$CYAN" \
                     "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
+
                 box_row "$CYAN" \
                     "${GRAY}Hasta pronto.${R}"
+
                 box_bottom "$CYAN"
 
                 printf '\n'
