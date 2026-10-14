@@ -17,7 +17,7 @@ export AWS_PAGER=""
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
-VERSION="v1.2"
+VERSION="v1.3"
 
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
@@ -33,23 +33,13 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES FIJAS DEL PANEL
+# DIMENSIONES FIJAS
 # ────────────────────────────────────────────────────────────────
-#
-# Panel general:
-# 1 borde + 44 caracteres + 1 borde = 46 columnas.
-#
-# Contenido:
-# 1 borde + 1 espacio + 42 contenido
-# + 1 espacio + 1 borde = 46 columnas.
-#
-# Tarjetas:
-# 1 borde + 20 caracteres + 1 borde = 22 columnas.
-#
-# Dos tarjetas:
-# 22 + 2 espacios + 22 = 46 columnas.
-#
-# ────────────────────────────────────────────────────────────────
+
+# Panel: 1 + 44 + 1 = 46 columnas.
+# Contenido: 1 + 1 + 42 + 1 + 1 = 46 columnas.
+# Tarjeta: 1 + 20 + 1 = 22 columnas.
+# Dos tarjetas: 22 + 2 + 22 = 46 columnas.
 
 BOX_INNER=44
 BOX_CONTENT=42
@@ -87,7 +77,7 @@ fi
 # UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
-# Elimina secuencias ANSI sin alterar el contenido visible.
+# Elimina secuencias ANSI.
 strip_ansi() {
     printf '%s' "$1" |
         python3 -c '
@@ -95,18 +85,16 @@ import re
 import sys
 
 text = sys.stdin.read()
-
 text = re.sub(
     r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
     "",
     text
 )
-
 sys.stdout.write(text)
 '
 }
 
-# Calcula el ancho visual de texto Unicode.
+# Calcula el ancho visual del texto Unicode.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -129,7 +117,7 @@ while i < len(text):
     char = text[i]
     code = ord(char)
 
-    # Selectores de presentación y unión de emojis.
+    # Caracteres de unión y selectores de presentación.
     if code in (0x200D, 0xFE0E, 0xFE0F):
         i += 1
         continue
@@ -139,13 +127,12 @@ while i < len(text):
         i += 1
         continue
 
-    # Banderas formadas por indicadores regionales.
+    # Banderas.
     if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
         if i + 1 < len(text):
             next_code = ord(text[i + 1])
-
             if 0x1F1E6 <= next_code <= 0x1F1FF:
                 i += 1
 
@@ -158,7 +145,7 @@ while i < len(text):
         i += 2
         continue
 
-    # Emojis y caracteres de ancho doble.
+    # Caracteres de ancho doble.
     if (
         unicodedata.east_asian_width(char) in ("W", "F")
         or 0x1F000 <= code <= 0x1FAFF
@@ -190,8 +177,8 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Ajusta el texto al ancho visual solicitado.
-# El ancho final siempre será el solicitado.
+# Ajusta el texto a un ancho exacto.
+# El contenido de los marcos utiliza caracteres de ancho predecible.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -202,7 +189,6 @@ fit_text() {
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
-    # Recortar el contenido si supera el espacio disponible.
     if ((width > target_width)); then
         content="$plain"
 
@@ -215,7 +201,6 @@ fit_text() {
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    # Imprimir el contenido y completar las columnas restantes.
     printf '%b' "$content"
     printf '%*s' "$padding" ''
 }
@@ -233,7 +218,7 @@ center_text() {
     width="$(visible_width "$plain")"
 
     if ((width >= total)); then
-        printf '%b' "$content"
+        fit_text "$content" "$total"
         return
     fi
 
@@ -274,8 +259,7 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Fila de ancho fijo.
-# El borde derecho permanece siempre en la misma columna.
+# Cada fila conserva exactamente 46 columnas visuales.
 box_row() {
     local color="$1"
     local content="$2"
@@ -283,7 +267,7 @@ box_row() {
 
     fitted="$(fit_text "$content" "$BOX_CONTENT")"
 
-    printf '  %b│%b %s %b│%b\n' \
+    printf '  %b│%b %b %b│%b\n' \
         "$color" \
         "$R" \
         "$fitted" \
@@ -291,7 +275,7 @@ box_row() {
         "$R"
 }
 
-# Línea divisoria de ancho fijo.
+# Línea divisoria.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -320,8 +304,7 @@ card_border() {
     esac
 }
 
-# Fila de tarjeta de ancho fijo.
-# Cada tarjeta ocupa exactamente 22 columnas.
+# Cada fila de tarjeta conserva 22 columnas.
 card_row() {
     local color="$1"
     local content="$2"
@@ -329,7 +312,7 @@ card_row() {
 
     fitted="$(fit_text "$content" "$CARD_CONTENT")"
 
-    printf '%b│%b %s %b│%b' \
+    printf '%b│%b %b %b│%b' \
         "$color" \
         "$R" \
         "$fitted" \
@@ -596,8 +579,10 @@ header() {
 
     clear 2>/dev/null || true
 
-    title="${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
-    subtitle="${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
+    # Sin emoji en el marco para evitar diferencias de ancho
+    # entre terminales Android, Linux y otras plataformas.
+    title="${WHITE}${B}AWS CLOUDFRONT MANAGER${R}"
+    subtitle="${GRAY}DASHBOARD DE ADMINISTRACION${R}"
 
     printf '\n'
 
@@ -623,12 +608,14 @@ status_bar() {
     local spaces
     local available_width
 
+    # Los estados dentro del marco utilizan caracteres de
+    # ancho predecible para mantener la alineación.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
-        status_text="${GREEN}✔ AWS conectado${R}"
+        status_text="${GREEN}OK AWS conectado${R}"
     elif ((CF_STATS_OK == 1 || ACM_STATS_OK == 1)); then
-        status_text="${YELLOW}⚠ Datos parciales de AWS${R}"
+        status_text="${YELLOW}! Datos parciales de AWS${R}"
     else
-        status_text="${RED}✖ AWS sin datos${R}"
+        status_text="${RED}X AWS sin datos${R}"
     fi
 
     version_text="${YELLOW}${VERSION}${R}"
@@ -637,7 +624,7 @@ status_bar() {
     version_width="$(visible_width "$version_text")"
 
     available_width=$((BOX_CONTENT - status_width - version_width))
-    ((available_width < 1)) && available_width=1
+    ((available_width < 0)) && available_width=0
 
     spaces="$(repeat_char ' ' "$available_width")"
 
@@ -671,9 +658,9 @@ dashboard_cards() {
     printf '\n'
 
     printf '  '
-    card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
+    card_row "$BLUE" "${BLUE}* Distribuciones${R}"
     printf '%s' "$gap"
-    card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
+    card_row "$GREEN" "${GREEN}+ Operativas${R}"
     printf '\n'
 
     printf '  '
@@ -696,9 +683,9 @@ dashboard_cards() {
     printf '\n'
 
     printf '  '
-    card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
+    card_row "$YELLOW" "${YELLOW}- Deshabilitadas${R}"
     printf '%s' "$gap"
-    card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
+    card_row "$MAGENTA" "${MAGENTA}# Certificados SSL${R}"
     printf '\n'
 
     printf '  '
@@ -763,30 +750,32 @@ dashboard() {
 
     box_top "$CYAN"
 
-    box_row "$CYAN" "${YELLOW}[1]${R}  🚀 Crear distribución"
-    box_row "$CYAN" "${YELLOW}[2]${R}  📊 Ver estado de distribuciones"
-    box_row "$CYAN" "${YELLOW}[3]${R}  ⚙️ Editar distribución"
-    box_row "$CYAN" "${YELLOW}[4]${R}  🔄 Activar / Desactivar distribución"
-    box_row "$CYAN" "${YELLOW}[5]${R}  🗑️ Eliminar distribución"
+    # Se eliminan los emojis dentro del marco para garantizar
+    # que las filas tengan siempre el mismo ancho.
+    box_row "$CYAN" "${YELLOW}[1]${R}  Crear distribucion"
+    box_row "$CYAN" "${YELLOW}[2]${R}  Ver estado de distribuciones"
+    box_row "$CYAN" "${YELLOW}[3]${R}  Editar distribucion"
+    box_row "$CYAN" "${YELLOW}[4]${R}  Activar / Desactivar distribucion"
+    box_row "$CYAN" "${YELLOW}[5]${R}  Eliminar distribucion"
 
     box_row "$CYAN" ""
     box_separator "$CYAN"
     box_row "$CYAN" ""
 
-    box_row "$CYAN" "${YELLOW}[6]${R}  🔐 Crear certificado SSL"
-    box_row "$CYAN" "${YELLOW}[7]${R}  🧹 Remover el panel"
-    box_row "$CYAN" "${YELLOW}[8]${R}  🚪 Salir"
+    box_row "$CYAN" "${YELLOW}[6]${R}  Crear certificado SSL"
+    box_row "$CYAN" "${YELLOW}[7]${R}  Remover el panel"
+    box_row "$CYAN" "${YELLOW}[8]${R}  Salir"
 
     box_bottom "$CYAN"
 
     printf '\n'
 
     printf '%b\n' \
-        "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
+        "${GRAY}  AWS CloudFront - Administracion - Seguridad SSL${R}"
 
     printf '\n'
 
-    printf '%b' "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
+    printf '%b' "${CYAN}${B}  > Selecciona una opcion [1-8]: ${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -967,7 +956,7 @@ main() {
                 box_top "$CYAN"
 
                 box_row "$CYAN" \
-                    "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
+                    "${GREEN}${B}Gracias por utilizar AWS Manager${R}"
 
                 box_row "$CYAN" \
                     "${GRAY}Hasta pronto.${R}"
