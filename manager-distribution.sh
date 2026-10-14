@@ -231,45 +231,67 @@ install_manager() {
     local source_path
     local resolved_bin
     local resolved_source
+    local temp_install
 
     source_path="$0"
 
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
+    # Si el panel ya se ejecuta desde su ubicación instalada,
+    # continuar normalmente sin reinstalar ni crear copias.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
         return 0
     fi
 
-    if [[ "$source_path" == "$BIN_PATH" ]]; then
-        return 0
-    fi
-
+    # Verificar que exista el archivo de origen.
     if [[ ! -f "$source_path" ]]; then
         printf '%b\n' "${RED}✖ No se encuentra el archivo del panel.${R}"
         exit 1
     fi
 
-    mkdir -p "$BIN_DIR" || {
+    # Crear el directorio de instalación si no existe.
+    if ! mkdir -p -- "$BIN_DIR"; then
         printf '%b\n' "${RED}✖ No se pudo crear ${BIN_DIR}.${R}"
+        exit 1
+    fi
+
+    # Crear un archivo temporal en el mismo directorio.
+    # Esto permite reemplazar el ejecutable sin generar respaldos.
+    temp_install="$(mktemp "${BIN_DIR}/.aws-manager.XXXXXX" 2>/dev/null)" || {
+        printf '%b\n' "${RED}✖ No se pudo crear el archivo temporal.${R}"
         exit 1
     }
 
-    if ! cp -- "$source_path" "$BIN_PATH"; then
+    # Copiar la nueva versión al archivo temporal.
+    if ! cp -- "$source_path" "$temp_install"; then
+        rm -f -- "$temp_install"
+        printf '%b\n' "${RED}✖ No se pudo preparar la nueva versión.${R}"
+        exit 1
+    fi
+
+    # Establecer permisos antes de reemplazar el ejecutable.
+    if ! chmod 700 "$temp_install"; then
+        rm -f -- "$temp_install"
+        printf '%b\n' "${RED}✖ No se pudieron establecer los permisos.${R}"
+        exit 1
+    fi
+
+    # Sustituir el ejecutable anterior.
+    # Al utilizar mv dentro del mismo sistema de archivos,
+    # se evita sobrescribir directamente el archivo en ejecución.
+    if ! mv -f -- "$temp_install" "$BIN_PATH"; then
+        rm -f -- "$temp_install"
         printf '%b\n' "${RED}✖ No se pudo instalar aws-manager.${R}"
         exit 1
     fi
 
-    chmod 700 "$BIN_PATH" || {
-        printf '%b\n' "${RED}✖ No se pudieron establecer los permisos.${R}"
-        exit 1
-    }
-
-    printf '\n%b\n' "${GREEN}✔ AWS Manager instalado correctamente.${R}"
+    printf '\n%b\n' "${GREEN}✔ AWS Manager actualizado correctamente.${R}"
     printf '%b\n\n' "${GRAY}Comando: ${BIN_PATH}${R}"
 
+    # Ejecutar la versión recién instalada.
     exec "$BIN_PATH" "$@"
 }
 
@@ -346,17 +368,14 @@ load_aws_statistics() {
 
         AWS_CONNECTION_STATUS="Error consultando CloudFront"
     else
-        # Validar que la respuesta contenga la lista de elementos.
         if printf '%s' "$distributions_json" |
             jq -e '
                 (.DistributionList.Items // [])
                 | type == "array"
             ' >/dev/null 2>&1; then
 
-            # CORRECCIÓN PRINCIPAL:
             # Contar directamente los elementos de Items.
-            # No depender de DistributionList.Quantity,
-            # que puede aparecer como null en ciertas consultas.
+            # No depender de DistributionList.Quantity.
 
             total="$(
                 printf '%s' "$distributions_json" |
