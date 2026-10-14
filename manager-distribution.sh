@@ -32,13 +32,14 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 ENABLED_PENDING_DISTRIBUTIONS="N/D"
 
-# Medidas uniformes de la interfaz.
+# Dimensiones de la interfaz.
+# Los bordes horizontales utilizan BOX_INNER y CARD_INNER.
 BOX_INNER=54
-BOX_CONTENT=52
+BOX_CONTENT=$((BOX_INNER - 1))
 
 CARD_INNER=25
 CARD_GAP=2
-CARD_CONTENT=23
+CARD_CONTENT=$((CARD_INNER - 1))
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -67,37 +68,63 @@ fi
 
 strip_ansi() {
     printf '%b' "$1" |
-        sed -E $'s/\033\\[[0-9;?]*[[:alpha:]]//g'
+        sed -E $'s/\033\\[[0-?]*[ -/]*[@-~]//g'
 }
 
-# Calcula el ancho visible aproximado de texto Unicode.
-# Los colores ANSI no cuentan como caracteres visibles.
+# Calcula el ancho visual aproximado del texto Unicode.
+# Excluye colores ANSI, marcas combinantes y selectores emoji.
 visible_width() {
     local value="$1"
-    local clean
 
-    clean="$(strip_ansi "$value")"
+    printf '%b' "$value" |
+        python3 -c '
+import sys
+import unicodedata
 
-    printf '%s' "$clean" |
-        awk '
-        BEGIN {
-            width = 0
-        }
-        {
-            for (i = 1; i <= length($0); i++) {
-                c = substr($0, i, 1)
+text = sys.stdin.read()
+width = 0
+join_next = False
+regional_count = 0
 
-                if (c ~ /[☁🟢🟡🔐🚀📊⚙️🔄🗑️🧹🚪✔✖⚠❯ℹ◈]/) {
-                    width += 2
-                } else {
-                    width += 1
-                }
-            }
-        }
-        END {
-            print width
-        }
-        '
+for char in text:
+    code = ord(char)
+
+    # Selectores de presentación y unión de emojis.
+    if code in (0xFE0E, 0xFE0F, 0x200D):
+        if code == 0x200D:
+            join_next = True
+        continue
+
+    # Marcas combinantes.
+    if unicodedata.combining(char):
+        continue
+
+    # Banderas formadas por indicadores regionales.
+    if 0x1F1E6 <= code <= 0x1F1FF:
+        regional_count += 1
+        if regional_count % 2 == 1:
+            width += 2
+        continue
+    else:
+        regional_count = 0
+
+    # No volver a contar el componente siguiente de un emoji unido.
+    if join_next:
+        join_next = False
+        continue
+
+    # Caracteres de ancho doble y emojis habituales.
+    if (
+        unicodedata.east_asian_width(char) in ("W", "F")
+        or 0x1F000 <= code <= 0x1FAFF
+        or 0x2600 <= code <= 0x27BF
+    ):
+        width += 2
+    else:
+        width += 1
+
+print(width)
+'
 }
 
 repeat_char() {
@@ -115,20 +142,27 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Recorta y rellena contenido para alcanzar un ancho fijo.
-# El contenido recibido puede incluir colores ANSI.
+# Ajusta el contenido a un ancho visual determinado.
 fit_text() {
     local content="$1"
     local target_width="$2"
+    local plain
     local width
     local padding
 
-    width="$(visible_width "$content")"
+    plain="$(strip_ansi "$content")"
+    width="$(visible_width "$plain")"
 
+    # Recortar texto que exceda el ancho disponible.
+    # Se elimina un carácter por iteración para evitar exceder el ancho.
     if ((width > target_width)); then
-        content="$(strip_ansi "$content")"
-        content="${content:0:target_width}"
+        content="$plain"
         width="$(visible_width "$content")"
+
+        while ((width > target_width)) && [[ -n "$content" ]]; do
+            content="${content%?}"
+            width="$(visible_width "$content")"
+        done
     fi
 
     padding=$((target_width - width))
@@ -137,18 +171,20 @@ fit_text() {
     printf '%b%*s' "$content" "$padding" ""
 }
 
-# Centra texto dentro de un ancho visible determinado.
+# Centra el texto según su ancho visual calculado.
 center_text() {
     local content="$1"
     local total="$2"
+    local plain
     local width
     local left
     local right
 
-    width="$(visible_width "$content")"
+    plain="$(strip_ansi "$content")"
+    width="$(visible_width "$plain")"
 
     if ((width >= total)); then
-        printf '%s' "$content"
+        printf '%b' "$content"
         return
     fi
 
@@ -189,8 +225,7 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Cada fila tiene:
-# margen izquierdo + borde + espacio + contenido + borde + margen.
+# Mantiene la misma geometría en todas las filas.
 box_row() {
     local color="$1"
     local content="$2"
@@ -230,7 +265,7 @@ card_border() {
     esac
 }
 
-# Las tarjetas comparten exactamente el mismo ancho interior.
+# Conserva el mismo ancho en cada fila de las tarjetas.
 card_row() {
     local color="$1"
     local content="$2"
@@ -257,8 +292,7 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si ya se está ejecutando la versión instalada,
-    # continuar sin reinstalarla.
+    # Si ya se ejecuta la versión instalada, continuar.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -275,7 +309,8 @@ install_manager() {
         exit 1
     fi
 
-    # Crear el temporal en el mismo directorio que el ejecutable.
+    # Crear el temporal junto al ejecutable para permitir
+    # una sustitución atómica.
     temp_install="$(mktemp "${BIN_DIR}/.aws-manager.XXXXXX" 2>/dev/null)" || {
         printf '%b\n' "${RED}✖ No se pudo crear el archivo temporal.${R}"
         exit 1
@@ -293,8 +328,6 @@ install_manager() {
         exit 1
     fi
 
-    # Sustitución atómica: no se sobrescribe directamente
-    # el archivo que pudiera estar ejecutándose.
     if ! mv -f -- "$temp_install" "$BIN_PATH"; then
         rm -f -- "$temp_install"
         printf '%b\n' "${RED}✖ No se pudo instalar aws-manager.${R}"
@@ -323,6 +356,8 @@ check_dependencies() {
     command -v jq >/dev/null 2>&1 || missing+=("jq")
     command -v aws >/dev/null 2>&1 || missing+=("aws-cli")
     command -v mktemp >/dev/null 2>&1 || missing+=("mktemp")
+    command -v python3 >/dev/null 2>&1 || missing+=("python3")
+    command -v readlink >/dev/null 2>&1 || missing+=("readlink")
 
     if ((${#missing[@]} > 0)); then
         printf '\n%b\n' \
@@ -382,49 +417,49 @@ load_aws_statistics() {
 
             total="$(
                 printf '%s' "$distributions_json" |
-                jq -r '
-                    (.DistributionList.Items // [])
-                    | length
-                '
+                    jq -r '
+                        (.DistributionList.Items // [])
+                        | length
+                    '
             )"
 
             enabled="$(
                 printf '%s' "$distributions_json" |
-                jq -r '
-                    [
-                        (.DistributionList.Items // [])[]
-                        | select(
-                            .Enabled == true
-                            and .Status == "Deployed"
-                        )
-                    ]
-                    | length
-                '
+                    jq -r '
+                        [
+                            (.DistributionList.Items // [])[]
+                            | select(
+                                .Enabled == true
+                                and .Status == "Deployed"
+                            )
+                        ]
+                        | length
+                    '
             )"
 
             disabled="$(
                 printf '%s' "$distributions_json" |
-                jq -r '
-                    [
-                        (.DistributionList.Items // [])[]
-                        | select(.Enabled == false)
-                    ]
-                    | length
-                '
+                    jq -r '
+                        [
+                            (.DistributionList.Items // [])[]
+                            | select(.Enabled == false)
+                        ]
+                        | length
+                    '
             )"
 
             enabled_pending="$(
                 printf '%s' "$distributions_json" |
-                jq -r '
-                    [
-                        (.DistributionList.Items // [])[]
-                        | select(
-                            .Enabled == true
-                            and .Status != "Deployed"
-                        )
-                    ]
-                    | length
-                '
+                    jq -r '
+                        [
+                            (.DistributionList.Items // [])[]
+                            | select(
+                                .Enabled == true
+                                and .Status != "Deployed"
+                            )
+                        ]
+                        | length
+                    '
             )"
 
             if [[ "$total" =~ ^[0-9]+$ &&
@@ -446,7 +481,7 @@ load_aws_statistics() {
         fi
     fi
 
-    # Consultar certificados SSL de ACM.
+    # Consultar certificados SSL emitidos en ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -462,10 +497,10 @@ load_aws_statistics() {
 
             certificates="$(
                 printf '%s' "$certificates_json" |
-                jq -r '
-                    (.CertificateSummaryList // [])
-                    | length
-                '
+                    jq -r '
+                        (.CertificateSummaryList // [])
+                        | length
+                    '
             )"
 
             if [[ "$certificates" =~ ^[0-9]+$ ]]; then
@@ -553,9 +588,7 @@ status_bar() {
     status_width="$(visible_width "$status_text")"
     version_width="$(visible_width "$version_text")"
 
-    # El contenido tiene BOX_CONTENT columnas disponibles.
     available_width=$((BOX_CONTENT - status_width - version_width))
-
     ((available_width < 1)) && available_width=1
 
     spaces="$(repeat_char ' ' "$available_width")"
