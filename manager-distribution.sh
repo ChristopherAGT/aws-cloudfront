@@ -17,7 +17,7 @@ export AWS_PAGER=""
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
-VERSION="v1.1"
+VERSION="v1.4"
 
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
@@ -36,8 +36,8 @@ ACM_STATS_OK=0
 # DIMENSIONES FIJAS
 # ────────────────────────────────────────────────────────────────
 
-# Panel:
-# 2 espacios de margen + 46 columnas.
+# Marco principal:
+# 2 espacios de margen + 46 columnas de marco = 48 columnas.
 #
 # Fila interior:
 # borde + espacio + 42 columnas + espacio + borde = 46.
@@ -46,7 +46,7 @@ ACM_STATS_OK=0
 # borde + 20 columnas + borde = 22.
 #
 # Dashboard:
-# 2 espacios + 22 + 2 espacios + 22 = 48 columnas.
+# 2 espacios de margen + 22 + 2 espacios + 22 = 48 columnas.
 
 BOX_INNER=44
 BOX_CONTENT=42
@@ -104,7 +104,8 @@ sys.stdout.write(text)
 }
 
 # Calcula el ancho visual del texto Unicode.
-# Considera emojis, caracteres de ancho doble y secuencias ANSI.
+# Contempla emojis, selectores de presentación, caracteres
+# combinantes, banderas y secuencias unidas mediante ZWJ.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -122,27 +123,39 @@ text = re.sub(
 
 width = 0
 i = 0
+length = len(text)
 
-while i < len(text):
+while i < length:
     char = text[i]
     code = ord(char)
-    category = unicodedata.category(char)
 
-    # Ignorar controles, caracteres de formato,
-    # marcas combinantes y selectores suplementarios.
+    # Saltos de línea y retornos no ocupan columnas.
+    if char in ("\n", "\r"):
+        i += 1
+        continue
+
+    # Marcas combinantes y selectores suplementarios.
     if (
-        category in ("Cc", "Cf", "Cs", "Mn", "Me")
-        or code in (0x200D, 0xFE0E, 0xFE0F)
+        unicodedata.combining(char)
+        or 0xFE00 <= code <= 0xFE0F
         or 0xE0100 <= code <= 0xE01EF
+        or 0x1F3FB <= code <= 0x1F3FF
     ):
         i += 1
         continue
 
-    # Las banderas se representan con dos indicadores regionales.
+    # Secuencias de unión: el emoji compuesto se cuenta como
+    # una unidad visual en lugar de sumar todos sus componentes.
+    if code == 0x200D:
+        i += 1
+        continue
+
+    # Banderas: dos indicadores regionales forman una bandera
+    # que ocupa normalmente dos columnas.
     if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
-        if i + 1 < len(text):
+        if i + 1 < length:
             next_code = ord(text[i + 1])
 
             if 0x1F1E6 <= next_code <= 0x1F1FF:
@@ -151,18 +164,76 @@ while i < len(text):
         i += 1
         continue
 
-    # Emoji con selector de presentación.
-    if i + 1 < len(text) and ord(text[i + 1]) == 0xFE0F:
+    # Detectar si el carácter pertenece a una secuencia emoji
+    # unida mediante ZWJ. La secuencia completa ocupa dos columnas.
+    if 0x1F000 <= code <= 0x1FAFF:
         width += 2
-        i += 2
+        i += 1
+
+        while i < length:
+            next_code = ord(text[i])
+
+            if next_code == 0xFE0F:
+                i += 1
+                continue
+
+            if 0x1F3FB <= next_code <= 0x1F3FF:
+                i += 1
+                continue
+
+            if next_code == 0x200D:
+                i += 1
+
+                if i < length:
+                    i += 1
+
+                continue
+
+            break
+
         continue
 
-    # Caracteres de ancho doble y emojis.
+    # Un selector FE0F indica presentación emoji.
+    # Debe comprobarse antes de avanzar sobre el carácter.
     if (
-        unicodedata.east_asian_width(char) in ("W", "F")
-        or 0x1F000 <= code <= 0x1FAFF
-        or 0x2600 <= code <= 0x27BF
+        i + 1 < length
+        and ord(text[i + 1]) == 0xFE0F
     ):
+        width += 2
+        i += 2
+
+        # Consumir posibles modificadores y secuencias ZWJ.
+        while i < length:
+            next_code = ord(text[i])
+
+            if next_code == 0xFE0F:
+                i += 1
+                continue
+
+            if 0x1F3FB <= next_code <= 0x1F3FF:
+                i += 1
+                continue
+
+            if next_code == 0x200D:
+                i += 1
+
+                if i < length:
+                    i += 1
+
+                continue
+
+            break
+
+        continue
+
+    # Símbolos que normalmente se representan como emojis.
+    if 0x2600 <= code <= 0x27BF:
+        width += 2
+        i += 1
+        continue
+
+    # Caracteres de ancho doble según Unicode.
+    if unicodedata.east_asian_width(char) in ("W", "F"):
         width += 2
     else:
         width += 1
@@ -201,7 +272,8 @@ fit_text() {
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
-    # Si el texto excede el ancho, recortarlo.
+    # Si el texto excede el ancho, recortarlo por caracteres
+    # Unicode sin dejar que los códigos ANSI alteren el cálculo.
     if ((width > target_width)); then
         content="$plain"
 
@@ -211,13 +283,12 @@ fit_text() {
         done
 
         plain="$content"
-        content="$plain"
     fi
 
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    # Imprimir el contenido y completar el ancho.
+    # Imprimir el contenido y completar el ancho exacto.
     printf '%b' "$content"
     printf '%*s' "$padding" ''
 }
@@ -278,13 +349,18 @@ box_separator() {
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Cada fila conserva exactamente el ancho interior del marco.
+# Cada fila ocupa exactamente el ancho del marco.
 box_row() {
     local color="$1"
     local content="$2"
+    local fitted
 
+    fitted="$(fit_text "$content" "$BOX_CONTENT")"
+
+    # 2 espacios de margen + 1 borde + 1 espacio
+    # + 42 columnas interiores + 1 espacio + 1 borde = 48.
     printf '  %b│%b ' "$color" "$R"
-    fit_text "$content" "$BOX_CONTENT"
+    printf '%b' "$fitted"
     printf ' %b│%b\n' "$color" "$R"
 }
 
@@ -321,9 +397,12 @@ card_border() {
 card_row() {
     local color="$1"
     local content="$2"
+    local fitted
+
+    fitted="$(fit_text "$content" "$CARD_CONTENT")"
 
     printf '%b│%b ' "$color" "$R"
-    fit_text "$content" "$CARD_CONTENT"
+    printf '%b' "$fitted"
     printf ' %b│%b' "$color" "$R"
 }
 
