@@ -3,7 +3,7 @@
 # ==============================================================
 # AWS CLOUDFRONT MANAGER
 # Panel administrativo para AWS CloudFront
-# Versión: v1.1
+# Versión: v1.3
 # ==============================================================
 
 set -o pipefail
@@ -17,7 +17,7 @@ export AWS_PAGER=""
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
-VERSION="v1.3"
+VERSION="v1.4"
 
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
@@ -33,24 +33,25 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES DEL PANEL
+# DIMENSIONES
 # ────────────────────────────────────────────────────────────────
 #
-# Todas las dimensiones se expresan en columnas de terminal.
+# Todas las filas se construyen a partir de un ancho interior fijo.
 #
-# Marco general:
-#   2 espacios de margen exterior.
-#   1 borde + 1 espacio + 42 columnas + 1 espacio + 1 borde.
+# Marco:
+#   2 espacios exteriores + 1 borde + 44 columnas + 1 borde.
 #
-# Tarjetas:
+# Fila:
+#   2 espacios exteriores + 1 borde + 1 espacio
+#   + 42 columnas + 1 espacio + 1 borde.
+#
+# Tarjeta:
 #   1 borde + 20 columnas interiores + 1 borde.
 #
 # Dos tarjetas:
-#   2 espacios exteriores + 22 + 2 espacios + 22 = 48 columnas.
+#   2 espacios exteriores + 22 + 2 espacios + 22.
 #
-# IMPORTANTE:
-# Los emojis pueden tener un ancho diferente según el terminal.
-# El cálculo de ancho se realiza mediante Python y Unicode.
+# El texto se ajusta una sola vez al ancho interior.
 # ==============================================================
 
 BOX_INNER=44
@@ -86,10 +87,9 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# UTILIDADES DE TEXTO Y ALINEACIÓN
+# UTILIDADES UNICODE
 # ────────────────────────────────────────────────────────────────
 
-# Elimina secuencias ANSI sin modificar el texto.
 strip_ansi() {
     printf '%s' "$1" |
         python3 -c '
@@ -108,17 +108,8 @@ sys.stdout.write(text)
 '
 }
 
-# Calcula el ancho visual Unicode.
-#
-# Considera:
-#   - Caracteres de ancho normal y doble.
-#   - Caracteres combinantes.
-#   - Selectores de presentación Unicode.
-#   - Emojis.
-#   - Modificadores de tonos de piel.
-#   - Banderas.
-#   - Secuencias de emojis unidas por ZWJ.
-#   - Secuencias ANSI de color.
+# Calcula el ancho visual de texto Unicode.
+# Para emojis unidos mediante ZWJ se cuenta un único grafema visual.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -134,16 +125,16 @@ text = re.sub(
     text
 )
 
-def is_variation_selector(code):
+def is_vs(code):
     return (
         0xFE00 <= code <= 0xFE0F
         or 0xE0100 <= code <= 0xE01EF
     )
 
-def is_regional_indicator(code):
+def is_regional(code):
     return 0x1F1E6 <= code <= 0x1F1FF
 
-def is_emoji_modifier(code):
+def is_modifier(code):
     return 0x1F3FB <= code <= 0x1F3FF
 
 def is_emoji(code):
@@ -160,16 +151,13 @@ def char_width(char):
     if (
         category in ("Mn", "Me", "Cf")
         or unicodedata.combining(char)
-        or is_variation_selector(code)
-        or is_emoji_modifier(code)
+        or is_vs(code)
+        or is_modifier(code)
         or code == 0x200D
     ):
         return 0
 
     if unicodedata.east_asian_width(char) in ("W", "F"):
-        return 2
-
-    if is_emoji(code):
         return 2
 
     return 1
@@ -180,20 +168,18 @@ i = 0
 while i < len(text):
     code = ord(text[i])
 
-    # Una bandera regional ocupa dos columnas.
-    if is_regional_indicator(code):
+    if is_regional(code):
         width += 2
 
         if (
             i + 1 < len(text)
-            and is_regional_indicator(ord(text[i + 1]))
+            and is_regional(ord(text[i + 1]))
         ):
             i += 1
 
         i += 1
         continue
 
-    # Procesar emojis y sus secuencias unidas.
     if is_emoji(code):
         width += 2
         i += 1
@@ -201,31 +187,15 @@ while i < len(text):
         while i < len(text):
             next_code = ord(text[i])
 
-            if (
-                is_variation_selector(next_code)
-                or is_emoji_modifier(next_code)
-            ):
+            if is_vs(next_code) or is_modifier(next_code):
                 i += 1
                 continue
 
-            # Secuencia emoji ZWJ.
             if next_code == 0x200D:
                 i += 1
 
-                if i < len(text):
-                    joined_code = ord(text[i])
-
-                    if is_emoji(joined_code):
-                        i += 1
-
-                        while (
-                            i < len(text)
-                            and (
-                                is_variation_selector(ord(text[i]))
-                                or is_emoji_modifier(ord(text[i]))
-                            )
-                        ):
-                            i += 1
+                if i < len(text) and is_emoji(ord(text[i])):
+                    i += 1
 
                 continue
 
@@ -240,7 +210,6 @@ print(width)
 '
 }
 
-# Genera caracteres repetidos.
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -256,46 +225,40 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# Ajusta el contenido a un ancho visual exacto.
-#
-# Primero elimina colores ANSI para calcular el ancho.
-# Si el contenido excede el límite, lo recorta por grafemas
-# Unicode y después agrega el relleno necesario.
-#
-# La función conserva los colores ANSI cuando el contenido
-# cabe en el espacio disponible.
+# Ajusta el contenido a un ancho fijo.
+# Elimina colores ANSI únicamente cuando necesita recortar el texto.
 fit_text() {
     local content="$1"
     local target_width="$2"
     local plain
     local width
+    local fitted
     local padding
 
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
     if ((width > target_width)); then
-        content="$(
+        fitted="$(
             printf '%s' "$plain" |
                 python3 -c '
-import re
 import sys
 import unicodedata
 
 text = sys.stdin.read()
 target = int(sys.argv[1])
 
-def is_variation_selector(code):
+def is_vs(code):
     return (
         0xFE00 <= code <= 0xFE0F
         or 0xE0100 <= code <= 0xE01EF
     )
 
-def is_emoji_modifier(code):
-    return 0x1F3FB <= code <= 0x1F3FF
-
-def is_regional_indicator(code):
+def is_regional(code):
     return 0x1F1E6 <= code <= 0x1F1FF
+
+def is_modifier(code):
+    return 0x1F3FB <= code <= 0x1F3FF
 
 def is_emoji(code):
     return (
@@ -304,93 +267,85 @@ def is_emoji(code):
         or 0x2300 <= code <= 0x23FF
     )
 
-def char_width(char):
-    code = ord(char)
-
-    if (
-        unicodedata.category(char) in ("Mn", "Me", "Cf")
-        or unicodedata.combining(char)
-        or is_variation_selector(code)
-        or is_emoji_modifier(code)
-        or code == 0x200D
-    ):
-        return 0
-
-    if unicodedata.east_asian_width(char) in ("W", "F"):
-        return 2
-
-    if is_emoji(code):
-        return 2
-
-    return 1
-
-def clusters(value):
-    result = []
-    current = ""
-    join_next = False
-    regional_count = 0
-
-    for char in value:
-        code = ord(char)
-
-        if not current:
-            current = char
-            regional_count = 1 if is_regional_indicator(code) else 0
-            join_next = False
-            continue
-
-        if (
-            unicodedata.category(char) in ("Mn", "Me")
-            or is_variation_selector(code)
-            or is_emoji_modifier(code)
-        ):
-            current += char
-            continue
-
-        if code == 0x200D:
-            current += char
-            join_next = True
-            continue
-
-        if join_next:
-            current += char
-            join_next = False
-            continue
-
-        if (
-            is_regional_indicator(code)
-            and regional_count == 1
-        ):
-            current += char
-            regional_count = 2
-            continue
-
-        result.append(current)
-        current = char
-        regional_count = 1 if is_regional_indicator(code) else 0
-        join_next = False
-
-    if current:
-        result.append(current)
-
-    return result
-
-def cluster_width(cluster):
+def width_of_cluster(cluster):
     codes = [ord(char) for char in cluster]
 
-    if any(is_regional_indicator(code) for code in codes):
+    if any(is_regional(code) for code in codes):
         return 2
 
     if any(is_emoji(code) for code in codes):
         return 2
 
-    return sum(char_width(char) for char in cluster)
+    width = 0
+
+    for char in cluster:
+        code = ord(char)
+
+        if (
+            unicodedata.category(char) in ("Mn", "Me", "Cf")
+            or unicodedata.combining(char)
+            or is_vs(code)
+            or is_modifier(code)
+            or code == 0x200D
+        ):
+            continue
+
+        if unicodedata.east_asian_width(char) in ("W", "F"):
+            width += 2
+        else:
+            width += 1
+
+    return width
+
+clusters = []
+current = ""
+join_next = False
+regional_count = 0
+
+for char in text:
+    code = ord(char)
+
+    if not current:
+        current = char
+        regional_count = 1 if is_regional(code) else 0
+        continue
+
+    if (
+        unicodedata.category(char) in ("Mn", "Me")
+        or is_vs(code)
+        or is_modifier(code)
+    ):
+        current += char
+        continue
+
+    if code == 0x200D:
+        current += char
+        join_next = True
+        continue
+
+    if join_next:
+        current += char
+        join_next = False
+        continue
+
+    if is_regional(code) and regional_count == 1:
+        current += char
+        regional_count = 2
+        continue
+
+    clusters.append(current)
+    current = char
+    regional_count = 1 if is_regional(code) else 0
+    join_next = False
+
+if current:
+    clusters.append(current)
 
 result = ""
 used = 0
 
-for cluster in clusters(text):
-    width = cluster_width(cluster)
+for cluster in clusters:
+    width = width_of_cluster(cluster)
 
     if used + width > target:
         break
@@ -402,6 +357,7 @@ sys.stdout.write(result)
 ' "$target_width"
         )"
 
+        content="$fitted"
         width="$(visible_width "$content")"
     fi
 
@@ -412,7 +368,8 @@ sys.stdout.write(result)
     printf '%*s' "$padding" ''
 }
 
-# Centra el contenido según su ancho visual.
+# Centra un texto una sola vez en el ancho solicitado.
+# No utilizar esta función dentro de box_row.
 center_text() {
     local content="$1"
     local total="$2"
@@ -443,32 +400,33 @@ center_text() {
 
 box_top() {
     local color="$1"
-    local horizontal
 
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    printf '  %b╭%s╮%b\n' "$color" "$horizontal" "$R"
+    printf '  %b╭%s╮%b\n' \
+        "$color" \
+        "$(repeat_char '─' "$BOX_INNER")" \
+        "$R"
 }
 
 box_bottom() {
     local color="$1"
-    local horizontal
 
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    printf '  %b╰%s╯%b\n' "$color" "$horizontal" "$R"
+    printf '  %b╰%s╯%b\n' \
+        "$color" \
+        "$(repeat_char '─' "$BOX_INNER")" \
+        "$R"
 }
 
 box_separator() {
     local color="$1"
-    local horizontal
 
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
+    printf '  %b├%s┤%b\n' \
+        "$color" \
+        "$(repeat_char '─' "$BOX_INNER")" \
+        "$R"
 }
 
-# Todas las filas utilizan el mismo ancho interior.
+# Cada fila tiene exactamente BOX_CONTENT columnas interiores.
+# El texto no se centra previamente ni se rellena dos veces.
 box_row() {
     local color="$1"
     local content="$2"
@@ -478,7 +436,6 @@ box_row() {
     printf ' %b│%b\n' "$color" "$R"
 }
 
-# Línea divisoria de ancho fijo.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -507,7 +464,6 @@ card_border() {
     esac
 }
 
-# Cada tarjeta tiene un ancho interior constante.
 card_row() {
     local color="$1"
     local content="$2"
@@ -532,7 +488,6 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si ya se ejecuta el archivo instalado, no volver a copiarlo.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -597,8 +552,7 @@ check_dependencies() {
     command -v readlink >/dev/null 2>&1 || missing+=("readlink")
 
     if ((${#missing[@]} > 0)); then
-        printf '\n%b\n' \
-            "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
+        printf '\n%b\n' "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
 
         printf '%b\n' \
             "${YELLOW}Instala las herramientas faltantes y vuelve a ejecutar el panel.${R}"
@@ -630,7 +584,6 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
-    # Verificar credenciales.
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
 
@@ -638,7 +591,6 @@ load_aws_statistics() {
         return 1
     fi
 
-    # Consultar distribuciones de CloudFront.
     if distributions_json="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
@@ -712,7 +664,6 @@ load_aws_statistics() {
         fi
     fi
 
-    # Consultar certificados emitidos en ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -741,7 +692,6 @@ load_aws_statistics() {
         fi
     fi
 
-    # Determinar el estado de las consultas.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="Conectado a AWS"
     elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
@@ -893,14 +843,12 @@ dashboard_cards() {
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
-    # Estado de conexión.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
-    # Información de CloudFront.
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
@@ -912,7 +860,6 @@ dashboard_cards() {
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
 
-    # Información de ACM.
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
