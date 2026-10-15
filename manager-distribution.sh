@@ -3,7 +3,7 @@
 # ==============================================================
 # AWS CLOUDFRONT MANAGER
 # Panel administrativo para AWS CloudFront
-# Versión: v1.3
+# Versión: v1.1
 # ==============================================================
 
 set -o pipefail
@@ -17,7 +17,7 @@ export AWS_PAGER=""
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
-VERSION="v1.4"
+VERSION="v1.1"
 
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
@@ -33,34 +33,51 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES
+# SISTEMA UNIFICADO DE DIMENSIONES
 # ────────────────────────────────────────────────────────────────
 #
-# Todas las filas se construyen a partir de un ancho interior fijo.
+# Todos los anchos se expresan en columnas visibles de terminal.
 #
-# Marco:
-#   2 espacios exteriores + 1 borde + 44 columnas + 1 borde.
+# PANEL:
+#   2 espacios de margen exterior.
+#   1 borde izquierdo.
+#   1 espacio interior.
+#   42 columnas de contenido.
+#   1 espacio interior.
+#   1 borde derecho.
 #
-# Fila:
-#   2 espacios exteriores + 1 borde + 1 espacio
-#   + 42 columnas + 1 espacio + 1 borde.
+#   Ancho total: 2 + 1 + 1 + 42 + 1 + 1 = 48.
 #
-# Tarjeta:
-#   1 borde + 20 columnas interiores + 1 borde.
+# TARJETA:
+#   1 borde izquierdo.
+#   1 espacio interior.
+#   18 columnas de contenido.
+#   1 espacio interior.
+#   1 borde derecho.
 #
-# Dos tarjetas:
-#   2 espacios exteriores + 22 + 2 espacios + 22.
+#   Ancho total: 22 columnas.
 #
-# El texto se ajusta una sola vez al ancho interior.
-# ==============================================================
+# DASHBOARD:
+#   2 espacios de margen exterior.
+#   22 columnas de tarjeta.
+#   2 espacios de separación.
+#   22 columnas de tarjeta.
+#
+#   Ancho total: 48 columnas.
+#
+# Los anchos de las tarjetas y del panel son compatibles.
 
-BOX_INNER=44
 BOX_CONTENT=42
+BOX_INNER=44
 LINE_WIDTH=46
 
-CARD_INNER=20
 CARD_CONTENT=18
+CARD_INNER=20
+CARD_WIDTH=22
 CARD_GAP=2
+
+OUTER_MARGIN=2
+PANEL_WIDTH=48
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -87,12 +104,12 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# UTILIDADES UNICODE
+# UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
+# Elimina secuencias ANSI.
 strip_ansi() {
-    printf '%s' "$1" |
-        python3 -c '
+    python3 -c '
 import re
 import sys
 
@@ -105,14 +122,25 @@ text = re.sub(
 )
 
 sys.stdout.write(text)
-'
+' <<< "$1"
 }
 
 # Calcula el ancho visual de texto Unicode.
-# Para emojis unidos mediante ZWJ se cuenta un único grafema visual.
+#
+# Considera:
+# - Caracteres de ancho normal.
+# - Caracteres CJK de ancho doble.
+# - Emojis.
+# - Selectores de presentación.
+# - Marcas combinantes.
+# - Secuencias de unión.
+# - Banderas.
+#
+# Para caracteres ambiguos se utiliza un ancho conservador
+# compatible con la mayoría de terminales Linux.
+
 visible_width() {
-    printf '%s' "$1" |
-        python3 -c '
+    python3 -c '
 import re
 import sys
 import unicodedata
@@ -125,251 +153,199 @@ text = re.sub(
     text
 )
 
-def is_vs(code):
-    return (
-        0xFE00 <= code <= 0xFE0F
-        or 0xE0100 <= code <= 0xE01EF
-    )
-
-def is_regional(code):
-    return 0x1F1E6 <= code <= 0x1F1FF
-
-def is_modifier(code):
-    return 0x1F3FB <= code <= 0x1F3FF
-
-def is_emoji(code):
-    return (
-        0x1F000 <= code <= 0x1FAFF
-        or 0x2600 <= code <= 0x27BF
-        or 0x2300 <= code <= 0x23FF
-    )
-
-def char_width(char):
-    code = ord(char)
-    category = unicodedata.category(char)
-
-    if (
-        category in ("Mn", "Me", "Cf")
-        or unicodedata.combining(char)
-        or is_vs(code)
-        or is_modifier(code)
-        or code == 0x200D
-    ):
-        return 0
-
-    if unicodedata.east_asian_width(char) in ("W", "F"):
-        return 2
-
-    return 1
-
 width = 0
 i = 0
 
 while i < len(text):
-    code = ord(text[i])
+    ch = text[i]
+    code = ord(ch)
 
-    if is_regional(code):
+    # Los controles no ocupan columnas visibles.
+    if ch in "\r\n":
+        i += 1
+        continue
+
+    if unicodedata.category(ch) in ("Cc", "Cf"):
+        i += 1
+        continue
+
+    # Marcas combinantes.
+    if unicodedata.combining(ch):
+        i += 1
+        continue
+
+    # Selectores de variación.
+    if code in (0xFE0E, 0xFE0F):
+        i += 1
+        continue
+
+    # Secuencias de unión de emojis.
+    if code == 0x200D:
+        i += 1
+        continue
+
+    # Indicadores regionales usados para banderas.
+    if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
-        if (
-            i + 1 < len(text)
-            and is_regional(ord(text[i + 1]))
-        ):
+        if i + 1 < len(text):
+            next_code = ord(text[i + 1])
+
+            if 0x1F1E6 <= next_code <= 0x1F1FF:
+                i += 1
+
+        i += 1
+        continue
+
+    # Emojis.
+    if (
+        0x1F000 <= code <= 0x1FAFF
+        or 0x2600 <= code <= 0x27BF
+    ):
+        width += 2
+        i += 1
+
+        # Consumir selector de presentación.
+        if i < len(text) and ord(text[i]) == 0xFE0F:
             i += 1
 
-        i += 1
-        continue
+        # Consumir modificadores de tono de piel.
+        if i < len(text) and 0x1F3FB <= ord(text[i]) <= 0x1F3FF:
+            i += 1
 
-    if is_emoji(code):
-        width += 2
-        i += 1
+        # Consumir componentes unidos de la secuencia.
+        while i < len(text) and ord(text[i]) == 0x200D:
+            i += 1
 
-        while i < len(text):
-            next_code = ord(text[i])
+            if i < len(text):
+                component = text[i]
+                component_code = ord(component)
 
-            if is_vs(next_code) or is_modifier(next_code):
-                i += 1
-                continue
-
-            if next_code == 0x200D:
-                i += 1
-
-                if i < len(text) and is_emoji(ord(text[i])):
+                if (
+                    0x1F000 <= component_code <= 0x1FAFF
+                    or 0x2600 <= component_code <= 0x27BF
+                ):
                     i += 1
 
-                continue
+                    if i < len(text) and ord(text[i]) == 0xFE0F:
+                        i += 1
 
-            break
+                    if (
+                        i < len(text)
+                        and 0x1F3FB <= ord(text[i]) <= 0x1F3FF
+                    ):
+                        i += 1
+                else:
+                    break
 
         continue
 
-    width += char_width(text[i])
+    # Caracteres de ancho doble.
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        width += 2
+    else:
+        width += 1
+
     i += 1
 
 print(width)
-'
+' <<< "$1"
 }
 
+# Repite un carácter ASCII.
 repeat_char() {
     local char="$1"
     local count="$2"
-    local result=""
 
     ((count < 0)) && count=0
 
-    while ((count > 0)); do
-        result+="$char"
-        ((count--))
-    done
+    printf -v REPEAT_RESULT '%*s' "$count" ''
+    REPEAT_RESULT="${REPEAT_RESULT// /$char}"
 
-    printf '%s' "$result"
+    printf '%s' "$REPEAT_RESULT"
 }
 
-# Ajusta el contenido a un ancho fijo.
-# Elimina colores ANSI únicamente cuando necesita recortar el texto.
+# Ajusta el texto a un ancho visual exacto.
+#
+# El resultado se almacena en FITTED_TEXT para evitar depender
+# de la eliminación de espacios finales de $(...).
+
 fit_text() {
     local content="$1"
     local target_width="$2"
     local plain
     local width
-    local fitted
     local padding
 
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
     if ((width > target_width)); then
-        fitted="$(
-            printf '%s' "$plain" |
-                python3 -c '
+        # Recortar por caracteres Unicode sin cortar códigos ANSI.
+        plain="$(
+            python3 -c '
 import sys
 import unicodedata
 
 text = sys.stdin.read()
 target = int(sys.argv[1])
 
-def is_vs(code):
-    return (
-        0xFE00 <= code <= 0xFE0F
-        or 0xE0100 <= code <= 0xE01EF
-    )
+width = 0
+out = []
+i = 0
 
-def is_regional(code):
-    return 0x1F1E6 <= code <= 0x1F1FF
+while i < len(text):
+    ch = text[i]
+    code = ord(ch)
 
-def is_modifier(code):
-    return 0x1F3FB <= code <= 0x1F3FF
+    if ch in "\r\n":
+        break
 
-def is_emoji(code):
-    return (
-        0x1F000 <= code <= 0x1FAFF
-        or 0x2600 <= code <= 0x27BF
-        or 0x2300 <= code <= 0x23FF
-    )
+    if unicodedata.category(ch) in ("Cc", "Cf"):
+        i += 1
+        continue
 
-def width_of_cluster(cluster):
-    codes = [ord(char) for char in cluster]
+    if unicodedata.combining(ch):
+        out.append(ch)
+        i += 1
+        continue
 
-    if any(is_regional(code) for code in codes):
-        return 2
-
-    if any(is_emoji(code) for code in codes):
-        return 2
-
-    width = 0
-
-    for char in cluster:
-        code = ord(char)
-
-        if (
-            unicodedata.category(char) in ("Mn", "Me", "Cf")
-            or unicodedata.combining(char)
-            or is_vs(code)
-            or is_modifier(code)
-            or code == 0x200D
-        ):
-            continue
-
-        if unicodedata.east_asian_width(char) in ("W", "F"):
-            width += 2
-        else:
-            width += 1
-
-    return width
-
-clusters = []
-current = ""
-join_next = False
-regional_count = 0
-
-for char in text:
-    code = ord(char)
-
-    if not current:
-        current = char
-        regional_count = 1 if is_regional(code) else 0
+    if code in (0xFE0E, 0xFE0F):
+        out.append(ch)
+        i += 1
         continue
 
     if (
-        unicodedata.category(char) in ("Mn", "Me")
-        or is_vs(code)
-        or is_modifier(code)
+        0x1F000 <= code <= 0x1FAFF
+        or 0x2600 <= code <= 0x27BF
+        or unicodedata.east_asian_width(ch) in ("W", "F")
     ):
-        current += char
-        continue
+        char_width = 2
+    else:
+        char_width = 1
 
-    if code == 0x200D:
-        current += char
-        join_next = True
-        continue
-
-    if join_next:
-        current += char
-        join_next = False
-        continue
-
-    if is_regional(code) and regional_count == 1:
-        current += char
-        regional_count = 2
-        continue
-
-    clusters.append(current)
-    current = char
-    regional_count = 1 if is_regional(code) else 0
-    join_next = False
-
-if current:
-    clusters.append(current)
-
-result = ""
-used = 0
-
-for cluster in clusters:
-    width = width_of_cluster(cluster)
-
-    if used + width > target:
+    if width + char_width > target:
         break
 
-    result += cluster
-    used += width
+    out.append(ch)
+    width += char_width
+    i += 1
 
-sys.stdout.write(result)
-' "$target_width"
+sys.stdout.write("".join(out))
+' "$target_width" <<< "$plain"
         )"
 
-        content="$fitted"
-        width="$(visible_width "$content")"
+        content="$plain"
+        width="$(visible_width "$plain")"
     fi
 
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    printf '%b' "$content"
-    printf '%*s' "$padding" ''
+    FITTED_TEXT="${content}$(repeat_char ' ' "$padding")"
 }
 
-# Centra un texto una sola vez en el ancho solicitado.
-# No utilizar esta función dentro de box_row.
+# Centra texto utilizando su ancho visual.
 center_text() {
     local content="$1"
     local total="$2"
@@ -383,15 +359,18 @@ center_text() {
 
     if ((width >= total)); then
         fit_text "$content" "$total"
+        printf '%s' "$FITTED_TEXT"
         return
     fi
 
     left=$(((total - width) / 2))
     right=$((total - width - left))
 
-    printf '%*s' "$left" ''
-    printf '%b' "$content"
-    printf '%*s' "$right" ''
+    printf -v CENTERED_TEXT '%*s' "$left" ''
+    CENTERED_TEXT+="$content"
+    CENTERED_TEXT+="$(repeat_char ' ' "$right")"
+
+    printf '%s' "$CENTERED_TEXT"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -425,17 +404,23 @@ box_separator() {
         "$R"
 }
 
-# Cada fila tiene exactamente BOX_CONTENT columnas interiores.
-# El texto no se centra previamente ni se rellena dos veces.
+# Cada fila tiene exactamente 48 columnas visibles,
+# incluidos los dos espacios de margen exterior.
 box_row() {
     local color="$1"
     local content="$2"
 
-    printf '  %b│%b ' "$color" "$R"
     fit_text "$content" "$BOX_CONTENT"
-    printf ' %b│%b\n' "$color" "$R"
+
+    printf '  %b│%b %s %b│%b\n' \
+        "$color" \
+        "$R" \
+        "$FITTED_TEXT" \
+        "$color" \
+        "$R"
 }
 
+# Divisor horizontal alineado con el panel.
 line() {
     printf '  %b%s%b\n' \
         "$CYAN" \
@@ -464,13 +449,19 @@ card_border() {
     esac
 }
 
+# Cada tarjeta tiene exactamente 22 columnas visibles.
 card_row() {
     local color="$1"
     local content="$2"
 
-    printf '%b│%b ' "$color" "$R"
     fit_text "$content" "$CARD_CONTENT"
-    printf ' %b│%b' "$color" "$R"
+
+    printf '%b│%b %s %b│%b' \
+        "$color" \
+        "$R" \
+        "$FITTED_TEXT" \
+        "$color" \
+        "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -553,10 +544,7 @@ check_dependencies() {
 
     if ((${#missing[@]} > 0)); then
         printf '\n%b\n' "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
-
-        printf '%b\n' \
-            "${YELLOW}Instala las herramientas faltantes y vuelve a ejecutar el panel.${R}"
-
+        printf '%b\n' "${YELLOW}Instala las herramientas faltantes y vuelve a ejecutar el panel.${R}"
         exit 1
     fi
 }
@@ -584,69 +572,46 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
-    if ! aws sts get-caller-identity \
-        --output json >/dev/null 2>&1; then
-
+    if ! aws sts get-caller-identity --output json >/dev/null 2>&1; then
         AWS_CONNECTION_STATUS="Error de autenticación"
         return 1
     fi
 
     if distributions_json="$(
-        aws cloudfront list-distributions \
-            --output json 2>/dev/null
+        aws cloudfront list-distributions --output json 2>/dev/null
     )"; then
 
         if printf '%s' "$distributions_json" |
-            jq -e '
-                (.DistributionList.Items // [])
-                | type == "array"
-            ' >/dev/null 2>&1; then
+            jq -e '(.DistributionList.Items // []) | type == "array"' \
+                >/dev/null 2>&1; then
 
             total="$(
                 printf '%s' "$distributions_json" |
-                    jq -r '
-                        (.DistributionList.Items // [])
-                        | length
-                    '
+                    jq -r '(.DistributionList.Items // []) | length'
             )"
 
             enabled="$(
                 printf '%s' "$distributions_json" |
-                    jq -r '
-                        [
-                            (.DistributionList.Items // [])[]
-                            | select(
-                                .Enabled == true
-                                and .Status == "Deployed"
-                            )
-                        ]
-                        | length
-                    '
+                    jq -r '[
+                        (.DistributionList.Items // [])[]
+                        | select(.Enabled == true and .Status == "Deployed")
+                    ] | length'
             )"
 
             disabled="$(
                 printf '%s' "$distributions_json" |
-                    jq -r '
-                        [
-                            (.DistributionList.Items // [])[]
-                            | select(.Enabled == false)
-                        ]
-                        | length
-                    '
+                    jq -r '[
+                        (.DistributionList.Items // [])[]
+                        | select(.Enabled == false)
+                    ] | length'
             )"
 
             enabled_pending="$(
                 printf '%s' "$distributions_json" |
-                    jq -r '
-                        [
-                            (.DistributionList.Items // [])[]
-                            | select(
-                                .Enabled == true
-                                and .Status != "Deployed"
-                            )
-                        ]
-                        | length
-                    '
+                    jq -r '[
+                        (.DistributionList.Items // [])[]
+                        | select(.Enabled == true and .Status != "Deployed")
+                    ] | length'
             )"
 
             if [[ "$total" =~ ^[0-9]+$ &&
@@ -672,17 +637,12 @@ load_aws_statistics() {
     )"; then
 
         if printf '%s' "$certificates_json" |
-            jq -e '
-                (.CertificateSummaryList // [])
-                | type == "array"
-            ' >/dev/null 2>&1; then
+            jq -e '(.CertificateSummaryList // []) | type == "array"' \
+                >/dev/null 2>&1; then
 
             certificates="$(
                 printf '%s' "$certificates_json" |
-                    jq -r '
-                        (.CertificateSummaryList // [])
-                        | length
-                    '
+                    jq -r '(.CertificateSummaryList // []) | length'
             )"
 
             if [[ "$certificates" =~ ^[0-9]+$ ]]; then
@@ -750,8 +710,8 @@ status_bar() {
     local version_text
     local status_width
     local version_width
-    local spaces
     local available_width
+    local spaces
 
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         status_text="${GREEN}✔ AWS conectado${R}"
@@ -766,7 +726,8 @@ status_bar() {
     status_width="$(visible_width "$status_text")"
     version_width="$(visible_width "$version_text")"
 
-    available_width=$((BOX_CONTENT - status_width - version_width))
+    # Un espacio separa el estado de la versión.
+    available_width=$((BOX_CONTENT - status_width - version_width - 1))
     ((available_width < 1)) && available_width=1
 
     spaces="$(repeat_char ' ' "$available_width")"
@@ -794,6 +755,7 @@ dashboard_cards() {
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
     # Primera fila: distribuciones y operativas.
+
     printf '  '
     card_border "$BLUE" top
     printf '%s' "$gap"
@@ -819,6 +781,7 @@ dashboard_cards() {
     printf '\n\n'
 
     # Segunda fila: deshabilitadas y certificados.
+
     printf '  '
     card_border "$YELLOW" top
     printf '%s' "$gap"
@@ -843,11 +806,15 @@ dashboard_cards() {
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
+    # Estado de conexión.
+
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
+
+    # Información de CloudFront.
 
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
@@ -859,6 +826,8 @@ dashboard_cards() {
         printf '%b\n' \
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
+
+    # Información de ACM.
 
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
@@ -941,8 +910,7 @@ run_module() {
         "$url" -o "$tmp_file"; then
 
         printf '%b\n' "${RED}✖ No se pudo descargar el módulo.${R}"
-        printf '%b\n' \
-            "${GRAY}Verifica la conexión y que el archivo exista en GitHub.${R}"
+        printf '%b\n' "${GRAY}Verifica la conexión y que el archivo exista en GitHub.${R}"
 
         rm -f -- "$tmp_file"
         pause
@@ -972,8 +940,7 @@ run_module() {
     rm -f -- "$tmp_file"
 
     if ((result != 0)); then
-        printf '\n%b\n' \
-            "${YELLOW}⚠ El módulo terminó con código ${result}.${R}"
+        printf '\n%b\n' "${YELLOW}⚠ El módulo terminó con código ${result}.${R}"
     fi
 
     pause
@@ -991,11 +958,8 @@ uninstall_manager() {
     printf '\n'
     printf '%b\n' "${YELLOW}${B}⚠ DESINSTALACIÓN DEL PANEL${R}"
 
-    printf '%b\n' \
-        "${GRAY}Se eliminará el comando local aws-manager.${R}"
-
-    printf '%b\n' \
-        "${GRAY}No se borrarán distribuciones ni certificados de AWS.${R}"
+    printf '%b\n' "${GRAY}Se eliminará el comando local aws-manager.${R}"
+    printf '%b\n' "${GRAY}No se borrarán distribuciones ni certificados de AWS.${R}"
 
     printf '\n'
 
@@ -1005,14 +969,10 @@ uninstall_manager() {
     case "$confirm" in
         s|S|si|SI|Si|sí|Sí|SÍ)
             if rm -f -- "$BIN_PATH"; then
-                printf '\n%b\n' \
-                    "${GREEN}✔ Comando aws-manager eliminado.${R}"
-
-                printf '%b\n' \
-                    "${GRAY}Los recursos de AWS permanecen intactos.${R}"
+                printf '\n%b\n' "${GREEN}✔ Comando aws-manager eliminado.${R}"
+                printf '%b\n' "${GRAY}Los recursos de AWS permanecen intactos.${R}"
             else
-                printf '\n%b\n' \
-                    "${RED}✖ No se pudo eliminar el comando.${R}"
+                printf '\n%b\n' "${RED}✖ No se pudo eliminar el comando.${R}"
                 pause
             fi
             exit 0
@@ -1061,8 +1021,7 @@ main() {
                 ;;
 
             5)
-                printf '\n%b\n' \
-                    "${RED}${B}⚠ ATENCIÓN: ELIMINAR DISTRIBUCIÓN${R}"
+                printf '\n%b\n' "${RED}${B}⚠ ATENCIÓN: ELIMINAR DISTRIBUCIÓN${R}"
 
                 read -r -p \
                     "$(printf '%b' "${YELLOW}¿Continuar con el módulo de eliminación? [s/N]: ${R}")" \
