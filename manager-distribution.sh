@@ -35,26 +35,13 @@ ACM_STATS_OK=0
 # ────────────────────────────────────────────────────────────────
 # DIMENSIONES FIJAS
 # ────────────────────────────────────────────────────────────────
-#
-# Marco exterior:
-# 2 espacios de margen + 1 borde + 44 caracteres + 1 borde = 48.
-#
-# Fila interior:
-# 2 espacios de margen + 1 borde + 1 espacio
-# + 42 columnas interiores + 1 espacio + 1 borde = 48.
-#
-# Tarjetas:
-# 2 espacios de margen + 22 columnas + 2 espacios
-# + 22 columnas = 48.
-#
-# IMPORTANTE:
-# Las dimensiones se mantienen fijas. El ancho visual de los
-# emojis se calcula antes de generar el relleno de cada fila.
 
+# Marco principal: 48 columnas totales, incluidos los márgenes.
 BOX_INNER=44
 BOX_CONTENT=42
 LINE_WIDTH=46
 
+# Tarjetas: 22 columnas por tarjeta.
 CARD_INNER=20
 CARD_CONTENT=18
 CARD_GAP=2
@@ -87,7 +74,6 @@ fi
 # UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
-# Elimina secuencias ANSI.
 strip_ansi() {
     printf '%s' "$1" |
         python3 -c '
@@ -95,30 +81,14 @@ import re
 import sys
 
 text = sys.stdin.read()
-
-text = re.sub(
-    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
-    "",
-    text
-)
-
+text = re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", text)
 sys.stdout.write(text)
 '
 }
 
-# Calcula el ancho visual de caracteres Unicode.
-#
-# Considera:
-# - Secuencias ANSI.
-# - Emojis con selector FE0F.
-# - Emojis con modificadores de tono.
-# - Banderas.
-# - Secuencias ZWJ.
-# - Caracteres combinantes.
-# - Caracteres de ancho doble.
-#
-# El cálculo se realiza sobre el texto sin colores ANSI.
-
+# Calcula el ancho visual Unicode.
+# Contempla emojis, modificadores, banderas, selectores de
+# presentación y secuencias ZWJ sin contar sus componentes dobles.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -127,120 +97,112 @@ import sys
 import unicodedata
 
 text = sys.stdin.read()
-
-text = re.sub(
-    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
-    "",
-    text
-)
-
-def is_regional(code):
-    return 0x1F1E6 <= code <= 0x1F1FF
-
-def is_modifier(code):
-    return 0x1F3FB <= code <= 0x1F3FF
-
-def is_variation(code):
-    return 0xFE00 <= code <= 0xFE0F or 0xE0100 <= code <= 0xE01EF
-
-def is_emoji(code):
-    return (
-        0x1F000 <= code <= 0x1FAFF
-        or 0x2600 <= code <= 0x27BF
-    )
-
-def char_width(char):
-    code = ord(char)
-
-    if char in ("\n", "\r", "\t"):
-        return 0
-
-    if unicodedata.combining(char):
-        return 0
-
-    if is_variation(code) or is_modifier(code) or code == 0x200D:
-        return 0
-
-    if unicodedata.category(char) in ("Cf", "Mn", "Me"):
-        return 0
-
-    if unicodedata.east_asian_width(char) in ("W", "F"):
-        return 2
-
-    if is_emoji(code):
-        return 2
-
-    return 1
+text = re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", text)
 
 width = 0
 i = 0
-length = len(text)
+n = len(text)
 
-while i < length:
-    char = text[i]
-    code = ord(char)
+while i < n:
+    ch = text[i]
+    cp = ord(ch)
 
-    # Saltos de línea.
-    if char in ("\n", "\r"):
+    if ch in ("\n", "\r"):
         i += 1
         continue
 
-    # Banderas: dos indicadores regionales forman una unidad.
-    if is_regional(code):
+    # Marcas combinantes, selectores de variación y modificadores.
+    if (
+        unicodedata.combining(ch)
+        or 0xFE00 <= cp <= 0xFE0F
+        or 0xE0100 <= cp <= 0xE01EF
+        or 0x1F3FB <= cp <= 0x1F3FF
+        or cp == 0x20E3
+    ):
+        i += 1
+        continue
+
+    # Una bandera regional completa ocupa dos columnas.
+    if 0x1F1E6 <= cp <= 0x1F1FF:
         width += 2
         i += 1
 
-        if i < length and is_regional(ord(text[i])):
+        if i < n and 0x1F1E6 <= ord(text[i]) <= 0x1F1FF:
             i += 1
 
         continue
 
-    # Calcular el ancho inicial del carácter.
-    current_width = char_width(char)
+    # Emoji con selector de presentación.
+    if i + 1 < n and ord(text[i + 1]) == 0xFE0F:
+        width += 2
+        i += 2
 
-    # Un selector FE0F puede convertir un símbolo en emoji.
-    if i + 1 < length and ord(text[i + 1]) == 0xFE0F:
-        if current_width < 2:
-            current_width = 2
+        while i < n:
+            nxt = ord(text[i])
 
-        i += 1
-
-    # Consumir selectores, modificadores y secuencias ZWJ.
-    while i + 1 < length:
-        next_code = ord(text[i + 1])
-
-        if is_variation(next_code) or is_modifier(next_code):
-            i += 1
-            continue
-
-        if next_code == 0x200D:
-            i += 1
-
-            if i + 1 < length:
+            if (
+                nxt == 0xFE0F
+                or 0x1F3FB <= nxt <= 0x1F3FF
+                or 0xE0100 <= nxt <= 0xE01EF
+                or nxt == 0x20E3
+            ):
                 i += 1
+                continue
 
-                joined_code = ord(text[i])
-
-                # La secuencia unida ocupa dos columnas.
-                current_width = max(current_width, 2)
-
-                if is_emoji(joined_code):
-                    current_width = 2
-
+            if nxt == 0x200D:
+                i += 1
+                if i < n:
+                    i += 1
                 continue
 
             break
 
-        break
+        continue
 
-    width += current_width
+    # Emojis y secuencias unidas mediante ZWJ.
+    if 0x1F000 <= cp <= 0x1FAFF:
+        width += 2
+        i += 1
+
+        while i < n:
+            nxt = ord(text[i])
+
+            if (
+                nxt == 0xFE0F
+                or 0x1F3FB <= nxt <= 0x1F3FF
+                or 0xE0100 <= nxt <= 0xE01EF
+            ):
+                i += 1
+                continue
+
+            if nxt == 0x200D:
+                i += 1
+                if i < n:
+                    i += 1
+                continue
+
+            break
+
+        continue
+
+    # Símbolos de uso habitual como emojis.
+    if 0x2600 <= cp <= 0x27BF:
+        width += 2
+        i += 1
+        continue
+
+    # Ancho Unicode de los caracteres restantes.
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        width += 2
+    else:
+        width += 1
+
     i += 1
 
 print(width)
 '
 }
 
-# Genera caracteres repetidos.
 repeat_char() {
     local char="$1"
     local count="$2"
@@ -257,14 +219,6 @@ repeat_char() {
 }
 
 # Ajusta el contenido a un ancho visual exacto.
-#
-# IMPORTANTE:
-# No se debe utilizar la longitud normal de Bash para calcular
-# el ancho porque los emojis y caracteres Unicode pueden ocupar
-# dos columnas, aunque estén formados por un solo carácter.
-#
-# El relleno se calcula usando visible_width.
-
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -275,7 +229,6 @@ fit_text() {
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
-    # Recortar únicamente si el texto supera el ancho permitido.
     if ((width > target_width)); then
         content="$plain"
 
@@ -283,21 +236,18 @@ fit_text() {
             content="${content%?}"
             width="$(visible_width "$content")"
         done
+
+        plain="$content"
+        width="$(visible_width "$plain")"
     fi
 
     padding=$((target_width - width))
     ((padding < 0)) && padding=0
 
-    # Imprimir el contenido sin alterar su formato.
-    printf '%s' "$content"
-
-    # Completar exactamente las columnas que faltan.
-    if ((padding > 0)); then
-        printf '%*s' "$padding" ''
-    fi
+    printf '%b' "$content"
+    printf '%*s' "$padding" ''
 }
 
-# Centra el contenido según su ancho visual.
 center_text() {
     local content="$1"
     local total="$2"
@@ -317,11 +267,8 @@ center_text() {
     left=$(((total - width) / 2))
     right=$((total - width - left))
 
-    ((left < 0)) && left=0
-    ((right < 0)) && right=0
-
     printf '%*s' "$left" ''
-    printf '%s' "$content"
+    printf '%b' "$content"
     printf '%*s' "$right" ''
 }
 
@@ -334,7 +281,6 @@ box_top() {
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
-
     printf '  %b╭%s╮%b\n' "$color" "$horizontal" "$R"
 }
 
@@ -343,7 +289,6 @@ box_bottom() {
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
-
     printf '  %b╰%s╯%b\n' "$color" "$horizontal" "$R"
 }
 
@@ -352,26 +297,26 @@ box_separator() {
     local horizontal
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
-
     printf '  %b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Cada fila ocupa exactamente el mismo ancho que el marco.
 box_row() {
     local color="$1"
     local content="$2"
+    local fitted
+
+    fitted="$(fit_text "$content" "$BOX_CONTENT")"
 
     printf '  %b│%b ' "$color" "$R"
-    fit_text "$content" "$BOX_CONTENT"
+    printf '%b' "$fitted"
     printf ' %b│%b\n' "$color" "$R"
 }
 
-# Línea divisoria de ancho fijo.
 line() {
-    printf '  %b%s%b\n' \
-        "$CYAN" \
-        "$(repeat_char '─' "$LINE_WIDTH")" \
-        "$R"
+    local horizontal
+
+    horizontal="$(repeat_char '─' "$LINE_WIDTH")"
+    printf '  %b%s%b\n' "$CYAN" "$horizontal" "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -395,13 +340,15 @@ card_border() {
     esac
 }
 
-# Cada fila de tarjeta ocupa exactamente 22 columnas visuales.
 card_row() {
     local color="$1"
     local content="$2"
+    local fitted
+
+    fitted="$(fit_text "$content" "$CARD_CONTENT")"
 
     printf '%b│%b ' "$color" "$R"
-    fit_text "$content" "$CARD_CONTENT"
+    printf '%b' "$fitted"
     printf ' %b│%b' "$color" "$R"
 }
 
@@ -420,7 +367,6 @@ install_manager() {
     resolved_source="$(readlink -f -- "$source_path" 2>/dev/null || true)"
     resolved_bin="$(readlink -f -- "$BIN_PATH" 2>/dev/null || true)"
 
-    # Si ya se ejecuta el archivo instalado, no volver a copiarlo.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -518,15 +464,12 @@ load_aws_statistics() {
     CF_STATS_OK=0
     ACM_STATS_OK=0
 
-    # Verificar credenciales.
     if ! aws sts get-caller-identity \
         --output json >/dev/null 2>&1; then
-
         AWS_CONNECTION_STATUS="Error de autenticación"
         return 1
     fi
 
-    # Consultar distribuciones de CloudFront.
     if distributions_json="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
@@ -600,7 +543,6 @@ load_aws_statistics() {
         fi
     fi
 
-    # Consultar certificados emitidos en ACM.
     if certificates_json="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
@@ -629,7 +571,6 @@ load_aws_statistics() {
         fi
     fi
 
-    # Determinar el estado de las consultas.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         AWS_CONNECTION_STATUS="Conectado a AWS"
     elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
@@ -731,7 +672,6 @@ dashboard_cards() {
 
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # Primera fila: distribuciones y operativas.
     printf '  '
     card_border "$BLUE" top
     printf '%s' "$gap"
@@ -756,7 +696,6 @@ dashboard_cards() {
     card_border "$GREEN" bottom
     printf '\n\n'
 
-    # Segunda fila: deshabilitadas y certificados.
     printf '  '
     card_border "$YELLOW" top
     printf '%s' "$gap"
@@ -781,14 +720,12 @@ dashboard_cards() {
     card_border "$MAGENTA" bottom
     printf '\n\n'
 
-    # Estado de conexión.
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         printf '%b\n' "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
     else
         printf '%b\n' "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
-    # Información de CloudFront.
     if ((CF_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
@@ -800,7 +737,6 @@ dashboard_cards() {
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
 
-    # Información de ACM.
     if ((ACM_STATS_OK == 1)); then
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
