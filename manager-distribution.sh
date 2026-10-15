@@ -3,10 +3,11 @@
 # ==============================================================
 # AWS CLOUDFRONT MANAGER
 # Panel administrativo para AWS CloudFront
-# Versión: v1.2
+# Versión: v1.1
 # ==============================================================
 
 set -o pipefail
+
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 export AWS_PAGER=""
 
@@ -14,69 +15,73 @@ export AWS_PAGER=""
 # CONFIGURACIÓN
 # ────────────────────────────────────────────────────────────────
 
+VERSION="v1.2"
+
 REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
 
-VERSION="v1.1"
-
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
 
-TOTAL_DISTRIBUTIONS="N/D"
-ENABLED_DISTRIBUTIONS="N/D"
-DISABLED_DISTRIBUTIONS="N/D"
-SSL_CERTIFICATES="N/D"
-ENABLED_PENDING_DISTRIBUTIONS="N/D"
-
-AWS_CONNECTION_STATUS="Sin verificar"
-
-CF_STATS_OK=0
-ACM_STATS_OK=0
-
-# ────────────────────────────────────────────────────────────────
-# CONFIGURACIÓN DEL DISEÑO ADAPTABLE
-# ────────────────────────────────────────────────────────────────
-
-# Ancho mínimo y máximo del panel completo.
-MIN_PANEL_WIDTH=46
-MAX_PANEL_WIDTH=100
-
-# Márgenes horizontales exteriores.
-PANEL_MARGIN=2
-
-# Separación entre las tarjetas.
-CARD_GAP=2
-
-# Dimensiones calculadas por init_dimensions.
-PANEL_WIDTH=46
-
+# Dimensiones fijas del panel principal.
+#
+# Ancho total:
+#   2 espacios de margen + 46 columnas = 48 columnas.
+#
+# Interior:
+#   1 borde + 1 espacio + 42 columnas + 1 espacio + 1 borde.
+#
 BOX_INNER=44
 BOX_CONTENT=42
 LINE_WIDTH=46
 
-CARD_WIDTH=22
+# Dimensiones de las tarjetas.
+#
+# Cada tarjeta:
+#   1 borde + 1 espacio + 18 columnas + 1 espacio + 1 borde.
+#
+# Dos tarjetas:
+#   22 + 2 de separación + 22 = 46 columnas.
+#
 CARD_INNER=20
 CARD_CONTENT=18
+CARD_GAP=2
+
+# Estadísticas de AWS.
+
+AWS_ACCOUNT="Sin consultar"
+AWS_STATUS="Sin consultar"
+
+TOTAL_DISTRIBUTIONS="--"
+ACTIVE_DISTRIBUTIONS="--"
+DISABLED_DISTRIBUTIONS="--"
+PENDING_DISTRIBUTIONS="--"
+TOTAL_CERTIFICATES="--"
+
+AWS_CONNECTED=false
+AWS_STATS_LOADED=false
 
 # ────────────────────────────────────────────────────────────────
-# COLORES ANSI
+# COLORES
 # ────────────────────────────────────────────────────────────────
 
 if [[ -t 1 ]]; then
-    R=$'\033[0m'
-    B=$'\033[1m'
-    D=$'\033[2m'
+    R='\033[0m'
+    B='\033[1m'
+    D='\033[2m'
 
-    RED=$'\033[1;31m'
-    GREEN=$'\033[1;32m'
-    YELLOW=$'\033[1;33m'
-    BLUE=$'\033[1;34m'
-    MAGENTA=$'\033[1;35m'
-    CYAN=$'\033[1;36m'
-    WHITE=$'\033[1;37m'
-    GRAY=$'\033[0;37m'
+    RED='\033[31m'
+    GREEN='\033[32m'
+    YELLOW='\033[33m'
+    BLUE='\033[34m'
+    MAGENTA='\033[35m'
+    CYAN='\033[36m'
+    WHITE='\033[97m'
+
+    BG_BLUE='\033[44m'
+    BG_CYAN='\033[46m'
 else
     R=''
     B=''
@@ -89,495 +94,465 @@ else
     MAGENTA=''
     CYAN=''
     WHITE=''
-    GRAY=''
+
+    BG_BLUE=''
+    BG_CYAN=''
 fi
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES ADAPTABLES
+# UTILIDADES DE DIMENSIONES
 # ────────────────────────────────────────────────────────────────
 
-init_dimensions() {
-    local terminal_width
-    local available_width
-    local detected_width
-    local card_space
+strip_ansi() {
+    local text="${1-}"
 
-    # Obtener el ancho real de la terminal.
-    terminal_width=""
-
-    if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
-        terminal_width="$(tput cols 2>/dev/null || true)"
-    fi
-
-    # Alternativa cuando tput no proporciona dimensiones.
-    if [[ ! "$terminal_width" =~ ^[0-9]+$ ]] ||
-       ((terminal_width < 1)); then
-
-        terminal_width="${COLUMNS:-80}"
-    fi
-
-    # Garantizar que el ancho sea numérico.
-    if [[ ! "$terminal_width" =~ ^[0-9]+$ ]]; then
-        terminal_width=80
-    fi
-
-    # Reservar espacio a ambos lados del panel.
-    available_width=$((terminal_width - PANEL_MARGIN * 2))
-
-    # Aplicar los límites de diseño.
-    if ((available_width < MIN_PANEL_WIDTH)); then
-        available_width="$MIN_PANEL_WIDTH"
-    fi
-
-    if ((available_width > MAX_PANEL_WIDTH)); then
-        available_width="$MAX_PANEL_WIDTH"
-    fi
-
-    # Usar un ancho par para distribuir simétricamente
-    # las dos tarjetas y su separación.
-    if ((available_width % 2 != 0)); then
-        available_width=$((available_width - 1))
-    fi
-
-    # Protección adicional.
-    if ((available_width < MIN_PANEL_WIDTH)); then
-        available_width="$MIN_PANEL_WIDTH"
-    fi
-
-    detected_width="$available_width"
-
-    # Ancho total del panel, incluidos sus bordes.
-    PANEL_WIDTH="$detected_width"
-
-    # Marco general:
-    #
-    # ┌ + BOX_INNER + ┐ = PANEL_WIDTH
-    #
-    BOX_INNER=$((PANEL_WIDTH - 2))
-
-    # Filas:
-    #
-    # │ + espacio + contenido + espacio + │
-    #
-    BOX_CONTENT=$((PANEL_WIDTH - 4))
-
-    # Línea divisoria alineada con el panel.
-    LINE_WIDTH="$PANEL_WIDTH"
-
-    # ────────────────────────────────────────────────────────────
-    # DIMENSIONES DE LAS TARJETAS
-    # ────────────────────────────────────────────────────────────
-
-    # Las dos tarjetas deben ocupar el ancho del panel:
-    #
-    # CARD_WIDTH + CARD_GAP + CARD_WIDTH = PANEL_WIDTH
-    #
-    card_space=$((PANEL_WIDTH - CARD_GAP))
-
-    CARD_WIDTH=$((card_space / 2))
-
-    # Bordes superior e inferior.
-    CARD_INNER=$((CARD_WIDTH - 2))
-
-    # Filas interiores.
-    CARD_CONTENT=$((CARD_WIDTH - 4))
-
-    # Evitar dimensiones inválidas.
-    if ((BOX_CONTENT < 1 ||
-         CARD_CONTENT < 1 ||
-         CARD_INNER < 1)); then
-
-        printf '%b\n' \
-            "${RED}✖ Error al calcular las dimensiones del dashboard.${R}"
-
-        return 1
-    fi
-
-    return 0
+    printf '%s' "$text" |
+        sed -E 's/\x1B\[[0-9;?]*[[:alpha:]]//g'
 }
 
-# ────────────────────────────────────────────────────────────────
-# UTILIDADES DE TEXTO Y ALINEACIÓN
-# ────────────────────────────────────────────────────────────────
+# Calcula el ancho visible del texto sin contar códigos ANSI.
+#
+# Considera:
+#   - Caracteres combinados.
+#   - Caracteres de ancho completo.
+#   - Variantes emoji.
+#   - Secuencias emoji unidas mediante ZWJ.
+#   - Banderas formadas por indicadores regionales.
+#
+# La medición se realiza sobre el texto sin códigos ANSI.
 
-# Elimina secuencias ANSI.
-strip_ansi() {
-    printf '%s' "$1" |
-        python3 -c '
-import re
+visible_width() {
+    local text="${1-}"
+
+    python3 -c '
 import sys
+import unicodedata
+import re
 
 text = sys.stdin.read()
 
-text = re.sub(
-    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
-    "",
-    text
-)
+# Eliminar secuencias ANSI.
+text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
 
-sys.stdout.write(text)
-'
+width = 0
+i = 0
+n = len(text)
+
+def is_regional(c):
+    return 0x1F1E6 <= ord(c) <= 0x1F1FF
+
+def is_emoji_modifier(c):
+    return 0x1F3FB <= ord(c) <= 0x1F3FF
+
+def char_width(c):
+    cp = ord(c)
+
+    if unicodedata.combining(c):
+        return 0
+
+    if cp in (0xFE0E, 0xFE0F, 0x200D):
+        return 0
+
+    if 0xE0100 <= cp <= 0xE01EF:
+        return 0
+
+    if 0xFE00 <= cp <= 0xFE0F:
+        return 0
+
+    if unicodedata.category(c) in ("Mn", "Me", "Cf"):
+        return 0
+
+    if unicodedata.east_asian_width(c) in ("W", "F"):
+        return 2
+
+    return 1
+
+while i < n:
+    c = text[i]
+
+    if c == "\n" or c == "\r":
+        i += 1
+        continue
+
+    # Las banderas suelen representarse con dos indicadores.
+    if is_regional(c):
+        width += 2
+        i += 1
+
+        if i < n and is_regional(text[i]):
+            i += 1
+
+        continue
+
+    # Agrupar secuencias emoji unidas por ZWJ.
+    if char_width(c) == 2:
+        width += 2
+        i += 1
+
+        while i < n:
+            cp = ord(text[i])
+
+            # Selectores de variación y modificadores.
+            if (
+                cp in (0xFE0E, 0xFE0F)
+                or 0x1F3FB <= cp <= 0x1F3FF
+                or 0xE0100 <= cp <= 0xE01EF
+            ):
+                i += 1
+                continue
+
+            # Caracteres combinados.
+            if unicodedata.combining(text[i]):
+                i += 1
+                continue
+
+            # Unir el siguiente emoji a la secuencia actual.
+            if cp == 0x200D and i + 1 < n:
+                i += 2
+
+                while i < n:
+                    next_cp = ord(text[i])
+
+                    if (
+                        next_cp in (0xFE0E, 0xFE0F)
+                        or 0x1F3FB <= next_cp <= 0x1F3FF
+                        or 0xE0100 <= next_cp <= 0xE01EF
+                    ):
+                        i += 1
+                        continue
+
+                    if unicodedata.combining(text[i]):
+                        i += 1
+                        continue
+
+                    break
+
+                continue
+
+            break
+
+        continue
+
+    width += char_width(c)
+    i += 1
+
+print(width)
+' <<< "$text"
 }
 
-# Calcula el ancho visual del texto Unicode.
-visible_width() {
-    printf '%s' "$1" |
-        python3 -c '
-import re
+repeat_char() {
+    local char="${1-─}"
+    local count="${2:-0}"
+
+    (( count > 0 )) || return 0
+
+    printf '%*s' "$count" '' |
+        tr ' ' "$char"
+}
+
+# Ajusta un texto al ancho visible especificado.
+#
+# El relleno se calcula después de medir el texto sin ANSI.
+# El texto no se trunca mediante eliminación de caracteres Bash,
+# evitando cortar accidentalmente una secuencia de color.
+
+fit_text() {
+    local text="${1-}"
+    local target="${2:-0}"
+    local plain
+    local width
+    local remaining
+
+    plain="$(strip_ansi "$text")"
+    width="$(visible_width "$plain")"
+
+    if (( width > target )); then
+        plain="$(
+            python3 -c '
 import sys
 import unicodedata
 
 text = sys.stdin.read()
+target = int(sys.argv[1])
 
-text = re.sub(
-    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
-    "",
-    text
-)
-
+out = []
 width = 0
-i = 0
 
-while i < len(text):
-    char = text[i]
-    code = ord(char)
+for c in text:
+    cp = ord(c)
 
-    # Secuencias de unión y selectores de presentación.
-    if code in (0x200D, 0xFE0E, 0xFE0F):
-        i += 1
+    if c in ("\n", "\r"):
         continue
 
-    # Marcas combinantes y selectores suplementarios.
-    if unicodedata.combining(char) or 0xE0100 <= code <= 0xE01EF:
-        i += 1
+    if unicodedata.combining(c):
+        out.append(c)
         continue
 
-    # Banderas.
-    if 0x1F1E6 <= code <= 0x1F1FF:
-        width += 2
-
-        if i + 1 < len(text):
-            next_code = ord(text[i + 1])
-
-            if 0x1F1E6 <= next_code <= 0x1F1FF:
-                i += 1
-
-        i += 1
+    if cp in (0xFE0E, 0xFE0F, 0x200D):
+        out.append(c)
         continue
 
-    # Emoji con selector de presentación.
-    if i + 1 < len(text) and ord(text[i + 1]) == 0xFE0F:
-        width += 2
-        i += 2
+    if unicodedata.category(c) == "Cf":
+        out.append(c)
         continue
 
-    # Emojis y caracteres de ancho doble.
-    if (
-        unicodedata.east_asian_width(char) in ("W", "F")
-        or 0x1F000 <= code <= 0x1FAFF
-        or 0x2600 <= code <= 0x27BF
-    ):
-        width += 2
-    else:
-        width += 1
+    char_width = (
+        2
+        if unicodedata.east_asian_width(c) in ("W", "F")
+        else 1
+    )
 
-    i += 1
+    if width + char_width > target:
+        break
 
-print(width)
-'
-}
+    out.append(c)
+    width += char_width
 
-# Genera caracteres repetidos.
-repeat_char() {
-    local char="$1"
-    local count="$2"
-    local result=""
+print("".join(out), end="")
+' "$target" <<< "$plain"
+        )"
 
-    ((count < 0)) && count=0
-
-    while ((count > 0)); do
-        result+="$char"
-        ((count--))
-    done
-
-    printf '%s' "$result"
-}
-
-# Ajusta el contenido a un ancho visual exacto.
-# Los códigos ANSI no cuentan como columnas.
-fit_text() {
-    local content="$1"
-    local target_width="$2"
-    local plain
-    local width
-    local padding
-
-    plain="$(strip_ansi "$content")"
-    width="$(visible_width "$plain")"
-
-    # Recortar si el contenido supera el ancho disponible.
-    if ((width > target_width)); then
-        content="$plain"
-
-        while ((width > target_width)) && [[ -n "$content" ]]; do
-            content="${content%?}"
-            width="$(visible_width "$content")"
-        done
-
-        plain="$content"
+        text="$plain"
         width="$(visible_width "$plain")"
     fi
 
-    padding=$((target_width - width))
+    remaining=$(( target - width ))
 
-    ((padding < 0)) && padding=0
+    (( remaining < 0 )) && remaining=0
 
-    printf '%b' "$content"
-    printf '%*s' "$padding" ''
+    printf '%s%*s' "$text" "$remaining" ''
 }
 
-# Centra el contenido según su ancho visual.
 center_text() {
-    local content="$1"
-    local total="$2"
+    local text="${1-}"
+    local target="${2:-0}"
     local plain
     local width
     local left
     local right
 
-    plain="$(strip_ansi "$content")"
+    plain="$(strip_ansi "$text")"
     width="$(visible_width "$plain")"
 
-    if ((width >= total)); then
-        fit_text "$content" "$total"
-        return
+    if (( width > target )); then
+        text="$(fit_text "$plain" "$target")"
+        width="$(visible_width "$text")"
     fi
 
-    left=$(((total - width) / 2))
-    right=$((total - width - left))
+    left=$(( (target - width) / 2 ))
+    right=$(( target - width - left ))
 
-    printf '%*s' "$left" ''
-    printf '%b' "$content"
-    printf '%*s' "$right" ''
+    printf '%*s%s%*s' "$left" '' "$text" "$right" ''
 }
 
 # ────────────────────────────────────────────────────────────────
-# MÁRGENES GENERALES
-# ────────────────────────────────────────────────────────────────
-
-panel_indent() {
-    printf '%*s' "$PANEL_MARGIN" ''
-}
-
-# ────────────────────────────────────────────────────────────────
-# MARCOS DEL PANEL GENERAL
+# BORDES Y FILAS DEL PANEL
 # ────────────────────────────────────────────────────────────────
 
 box_top() {
-    local color="$1"
-    local horizontal
-
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    panel_indent
-    printf '%b╭%s╮%b\n' "$color" "$horizontal" "$R"
+    printf '  ┌%s┐\n' "$(repeat_char '─' "$BOX_INNER")"
 }
 
 box_bottom() {
-    local color="$1"
-    local horizontal
-
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    panel_indent
-    printf '%b╰%s╯%b\n' "$color" "$horizontal" "$R"
+    printf '  └%s┘\n' "$(repeat_char '─' "$BOX_INNER")"
 }
 
 box_separator() {
-    local color="$1"
-    local horizontal
-
-    horizontal="$(repeat_char '─' "$BOX_INNER")"
-
-    panel_indent
-    printf '%b├%s┤%b\n' "$color" "$horizontal" "$R"
+    printf '  ├%s┤\n' "$(repeat_char '─' "$BOX_INNER")"
 }
 
-# Cada fila coincide con el ancho total del marco.
 box_row() {
-    local color="$1"
-    local content="$2"
-    local fitted
+    local text="${1-}"
+    local content
 
-    fitted="$(fit_text "$content" "$BOX_CONTENT")"
+    content="$(fit_text "$text" "$BOX_CONTENT")"
 
-    panel_indent
-
-    printf '%b│%b ' "$color" "$R"
-    printf '%b' "$fitted"
-    printf ' %b│%b\n' "$color" "$R"
+    printf '  │ %s │\n' "$content"
 }
 
-# Línea divisoria con las mismas dimensiones del panel.
-line() {
-    panel_indent
+box_center() {
+    local text="${1-}"
+    local centered
 
-    printf '%b%s%b\n' \
-        "$CYAN" \
-        "$(repeat_char '─' "$LINE_WIDTH")" \
-        "$R"
+    centered="$(center_text "$text" "$BOX_CONTENT")"
+
+    box_row "$centered"
+}
+
+line() {
+    printf '  %s\n' "$(repeat_char '─' "$LINE_WIDTH")"
 }
 
 # ────────────────────────────────────────────────────────────────
 # TARJETAS DEL DASHBOARD
 # ────────────────────────────────────────────────────────────────
 
-card_border() {
-    local color="$1"
-    local side="$2"
-    local horizontal
+card_top() {
+    local color="${1-}"
+    local border
 
-    horizontal="$(repeat_char '─' "$CARD_INNER")"
+    border="$(repeat_char '─' "$CARD_INNER")"
 
-    case "$side" in
-        top)
-            printf '%b┌%s┐%b' "$color" "$horizontal" "$R"
-            ;;
-
-        bottom)
-            printf '%b└%s┘%b' "$color" "$horizontal" "$R"
-            ;;
-    esac
+    printf '%b┌%s┐%b' "$color" "$border" "$R"
 }
 
-# Cada fila de tarjeta ocupa CARD_WIDTH columnas.
+card_bottom() {
+    local color="${1-}"
+    local border
+
+    border="$(repeat_char '─' "$CARD_INNER")"
+
+    printf '%b└%s┘%b' "$color" "$border" "$R"
+}
+
+card_separator() {
+    local color="${1-}"
+    local border
+
+    border="$(repeat_char '─' "$CARD_INNER")"
+
+    printf '%b├%s┤%b' "$color" "$border" "$R"
+}
+
 card_row() {
-    local color="$1"
-    local content="$2"
-    local fitted
+    local text="${1-}"
+    local color="${2-}"
+    local content
 
-    fitted="$(fit_text "$content" "$CARD_CONTENT")"
+    content="$(fit_text "$text" "$CARD_CONTENT")"
 
-    printf '%b│%b ' "$color" "$R"
-    printf '%b' "$fitted"
-    printf ' %b│%b' "$color" "$R"
+    printf '%b│%b %s %b│%b' \
+        "$color" "$R" "$content" "$color" "$R"
 }
 
-# Inicio de una fila de tarjetas.
-cards_indent() {
-    panel_indent
+card_pair_row() {
+    local left="${1-}"
+    local right="${2-}"
+    local left_color="${3-${CYAN}}"
+    local right_color="${4-${BLUE}}"
+
+    printf '  '
+    card_row "$left" "$left_color"
+    printf '%*s' "$CARD_GAP" ''
+    card_row "$right" "$right_color"
+    printf '\n'
+}
+
+card_pair_top() {
+    local left_color="${1-${CYAN}}"
+    local right_color="${2-${BLUE}}"
+
+    printf '  '
+    card_top "$left_color"
+    printf '%*s' "$CARD_GAP" ''
+    card_top "$right_color"
+    printf '\n'
+}
+
+card_pair_separator() {
+    local left_color="${1-${CYAN}}"
+    local right_color="${2-${BLUE}}"
+
+    printf '  '
+    card_separator "$left_color"
+    printf '%*s' "$CARD_GAP" ''
+    card_separator "$right_color"
+    printf '\n'
+}
+
+card_pair_bottom() {
+    local left_color="${1-${CYAN}}"
+    local right_color="${2-${BLUE}}"
+
+    printf '  '
+    card_bottom "$left_color"
+    printf '%*s' "$CARD_GAP" ''
+    card_bottom "$right_color"
+    printf '\n'
 }
 
 # ────────────────────────────────────────────────────────────────
-# INSTALACIÓN COMO COMANDO GLOBAL
+# INSTALACIÓN DEL COMANDO
 # ────────────────────────────────────────────────────────────────
 
 install_manager() {
     local source_path
-    local resolved_bin
-    local resolved_source
-    local temp_install
+    local source_real
+    local target_real
 
     source_path="$0"
 
-    resolved_source="$(
-        readlink -f -- "$source_path" 2>/dev/null || true
-    )"
-
-    resolved_bin="$(
-        readlink -f -- "$BIN_PATH" 2>/dev/null || true
-    )"
-
-    # Si ya se ejecuta el archivo instalado, no volver a copiarlo.
-    if [[ -n "$resolved_source" &&
-          -n "$resolved_bin" &&
-          "$resolved_source" == "$resolved_bin" ]]; then
-        return 0
-    fi
-
-    if [[ ! -f "$source_path" ]]; then
-        printf '%b\n' \
-            "${RED}✖ No se encuentra el archivo del panel.${R}"
-
-        exit 1
-    fi
-
-    if ! mkdir -p -- "$BIN_DIR"; then
-        printf '%b\n' \
-            "${RED}✖ No se pudo crear ${BIN_DIR}.${R}"
-
-        exit 1
-    fi
-
-    temp_install="$(
-        mktemp "${BIN_DIR}/.aws-manager.XXXXXX" 2>/dev/null
-    )" || {
-        printf '%b\n' \
-            "${RED}✖ No se pudo crear el archivo temporal.${R}"
-
-        exit 1
+    mkdir -p "$BIN_DIR" || {
+        printf '%b❌ No se pudo crear el directorio de instalación.%b\n' \
+            "$RED" "$R"
+        return 1
     }
 
-    if ! cp -- "$source_path" "$temp_install"; then
-        rm -f -- "$temp_install"
+    source_real="$(
+        readlink -f "$source_path" 2>/dev/null ||
+        printf '%s' "$source_path"
+    )"
 
-        printf '%b\n' \
-            "${RED}✖ No se pudo preparar la nueva versión.${R}"
+    target_real="$(
+        readlink -f "$BIN_PATH" 2>/dev/null ||
+        printf '%s' "$BIN_PATH"
+    )"
 
-        exit 1
+    if [[ "$source_real" != "$target_real" ]]; then
+        if ! cp "$source_path" "$BIN_PATH"; then
+            printf '%b❌ No se pudo instalar el comando.%b\n' \
+                "$RED" "$R"
+            return 1
+        fi
     fi
 
-    if ! chmod 700 "$temp_install"; then
-        rm -f -- "$temp_install"
+    chmod +x "$BIN_PATH" || {
+        printf '%b❌ No se pudieron establecer los permisos.%b\n' \
+            "$RED" "$R"
+        return 1
+    }
 
-        printf '%b\n' \
-            "${RED}✖ No se pudieron establecer los permisos.${R}"
-
-        exit 1
+    if [[ "$source_real" != "$target_real" ]]; then
+        exec "$BIN_PATH" "$@"
     fi
-
-    if ! mv -f -- "$temp_install" "$BIN_PATH"; then
-        rm -f -- "$temp_install"
-
-        printf '%b\n' \
-            "${RED}✖ No se pudo instalar aws-manager.${R}"
-
-        exit 1
-    fi
-
-    printf '\n%b\n' \
-        "${GREEN}✔ AWS Manager actualizado correctamente.${R}"
-
-    printf '%b\n\n' \
-        "${GRAY}Comando: ${BIN_PATH}${R}"
-
-    exec "$BIN_PATH" "$@"
 }
-
-install_manager "$@"
 
 # ────────────────────────────────────────────────────────────────
 # DEPENDENCIAS
 # ────────────────────────────────────────────────────────────────
 
 check_dependencies() {
+    local dependencies=(
+        curl
+        bash
+        awk
+        jq
+        aws
+        mktemp
+        python3
+        readlink
+        sed
+    )
+
+    local dependency
     local missing=()
 
-    command -v curl >/dev/null 2>&1 || missing+=("curl")
-    command -v bash >/dev/null 2>&1 || missing+=("bash")
-    command -v awk >/dev/null 2>&1 || missing+=("awk")
-    command -v jq >/dev/null 2>&1 || missing+=("jq")
-    command -v aws >/dev/null 2>&1 || missing+=("aws-cli")
-    command -v mktemp >/dev/null 2>&1 || missing+=("mktemp")
-    command -v python3 >/dev/null 2>&1 || missing+=("python3")
-    command -v readlink >/dev/null 2>&1 || missing+=("readlink")
+    for dependency in "${dependencies[@]}"; do
+        if ! command -v "$dependency" >/dev/null 2>&1; then
+            missing+=("$dependency")
+        fi
+    done
 
-    if ((${#missing[@]} > 0)); then
-        printf '\n%b\n' \
-            "${RED}✖ Faltan dependencias: ${missing[*]}${R}"
+    if (( ${#missing[@]} > 0 )); then
+        printf '\n%b❌ Faltan las siguientes dependencias:%b\n' \
+            "$RED" "$R"
 
-        printf '%b\n' \
-            "${YELLOW}Instala las herramientas faltantes y vuelve a ejecutar el panel.${R}"
+        for dependency in "${missing[@]}"; do
+            printf '  %b•%b %s\n' "$YELLOW" "$R" "$dependency"
+        done
+
+        printf '\n%bInstala las dependencias necesarias y vuelve a ejecutar el panel.%b\n' \
+            "$YELLOW" "$R"
 
         return 1
     fi
@@ -586,256 +561,174 @@ check_dependencies() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# CONSULTA REAL A AWS
+# ESTADÍSTICAS DE AWS
 # ────────────────────────────────────────────────────────────────
 
 load_aws_statistics() {
-    local distributions_json
-    local certificates_json
-    local total
-    local enabled
-    local disabled
-    local enabled_pending
+    local identity
+    local distributions
     local certificates
 
-    TOTAL_DISTRIBUTIONS="N/D"
-    ENABLED_DISTRIBUTIONS="N/D"
-    DISABLED_DISTRIBUTIONS="N/D"
-    SSL_CERTIFICATES="N/D"
-    ENABLED_PENDING_DISTRIBUTIONS="N/D"
+    AWS_STATS_LOADED=true
 
-    AWS_CONNECTION_STATUS="Error de conexión"
+    AWS_ACCOUNT="Sin consultar"
+    AWS_STATUS="Sin consultar"
 
-    CF_STATS_OK=0
-    ACM_STATS_OK=0
+    TOTAL_DISTRIBUTIONS="--"
+    ACTIVE_DISTRIBUTIONS="--"
+    DISABLED_DISTRIBUTIONS="--"
+    PENDING_DISTRIBUTIONS="--"
+    TOTAL_CERTIFICATES="--"
 
-    # Verificar credenciales.
-    if ! aws sts get-caller-identity \
-        --output json >/dev/null 2>&1; then
+    AWS_CONNECTED=false
 
-        AWS_CONNECTION_STATUS="Error de autenticación"
+    printf '\n%b⏳ Consultando estadísticas de AWS...%b\n' \
+        "$CYAN" "$R"
+
+    if ! identity="$(
+        aws sts get-caller-identity \
+            --region "$AWS_REGION" \
+            --output json 2>/dev/null
+    )"; then
+        AWS_STATUS="Sin conexión"
+        AWS_ACCOUNT="No disponible"
+
+        printf '%b⚠ No se pudo consultar la identidad de AWS.%b\n' \
+            "$YELLOW" "$R"
 
         return 1
     fi
 
-    # Consultar distribuciones de CloudFront.
-    if distributions_json="$(
+    AWS_ACCOUNT="$(
+        jq -r '.Account // "No disponible"' <<< "$identity"
+    )"
+
+    AWS_STATUS="Conectado"
+    AWS_CONNECTED=true
+
+    if distributions="$(
         aws cloudfront list-distributions \
             --output json 2>/dev/null
     )"; then
 
-        if printf '%s' "$distributions_json" |
-            jq -e '
-                (.DistributionList.Items // [])
-                | type == "array"
-            ' >/dev/null 2>&1; then
+        TOTAL_DISTRIBUTIONS="$(
+            jq -r '
+                (.DistributionList.Items // []) | length
+            ' <<< "$distributions"
+        )"
 
-            total="$(
-                printf '%s' "$distributions_json" |
-                    jq -r '
-                        (.DistributionList.Items // [])
-                        | length
-                    '
-            )"
+        ACTIVE_DISTRIBUTIONS="$(
+            jq -r '
+                [
+                    (.DistributionList.Items // [])[]
+                    | select(
+                        .Enabled == true
+                        and .Status == "Deployed"
+                    )
+                ] | length
+            ' <<< "$distributions"
+        )"
 
-            enabled="$(
-                printf '%s' "$distributions_json" |
-                    jq -r '
-                        [
-                            (.DistributionList.Items // [])[]
-                            | select(
-                                .Enabled == true
-                                and .Status == "Deployed"
-                            )
-                        ]
-                        | length
-                    '
-            )"
+        DISABLED_DISTRIBUTIONS="$(
+            jq -r '
+                [
+                    (.DistributionList.Items // [])[]
+                    | select(.Enabled == false)
+                ] | length
+            ' <<< "$distributions"
+        )"
 
-            disabled="$(
-                printf '%s' "$distributions_json" |
-                    jq -r '
-                        [
-                            (.DistributionList.Items // [])[]
-                            | select(.Enabled == false)
-                        ]
-                        | length
-                    '
-            )"
-
-            enabled_pending="$(
-                printf '%s' "$distributions_json" |
-                    jq -r '
-                        [
-                            (.DistributionList.Items // [])[]
-                            | select(
-                                .Enabled == true
-                                and .Status != "Deployed"
-                            )
-                        ]
-                        | length
-                    '
-            )"
-
-            if [[ "$total" =~ ^[0-9]+$ &&
-                  "$enabled" =~ ^[0-9]+$ &&
-                  "$disabled" =~ ^[0-9]+$ &&
-                  "$enabled_pending" =~ ^[0-9]+$ ]]; then
-
-                TOTAL_DISTRIBUTIONS="$total"
-                ENABLED_DISTRIBUTIONS="$enabled"
-                DISABLED_DISTRIBUTIONS="$disabled"
-
-                ENABLED_PENDING_DISTRIBUTIONS="$enabled_pending"
-
-                CF_STATS_OK=1
-            fi
-        fi
+        PENDING_DISTRIBUTIONS="$(
+            jq -r '
+                [
+                    (.DistributionList.Items // [])[]
+                    | select(.Status != "Deployed")
+                ] | length
+            ' <<< "$distributions"
+        )"
+    else
+        TOTAL_DISTRIBUTIONS="Error"
+        ACTIVE_DISTRIBUTIONS="Error"
+        DISABLED_DISTRIBUTIONS="Error"
+        PENDING_DISTRIBUTIONS="Error"
     fi
 
-    # Consultar certificados emitidos en ACM.
-    if certificates_json="$(
+    if certificates="$(
         aws acm list-certificates \
             --region "$AWS_ACM_REGION" \
             --certificate-statuses ISSUED \
             --output json 2>/dev/null
     )"; then
 
-        if printf '%s' "$certificates_json" |
-            jq -e '
-                (.CertificateSummaryList // [])
-                | type == "array"
-            ' >/dev/null 2>&1; then
-
-            certificates="$(
-                printf '%s' "$certificates_json" |
-                    jq -r '
-                        (.CertificateSummaryList // [])
-                        | length
-                    '
-            )"
-
-            if [[ "$certificates" =~ ^[0-9]+$ ]]; then
-                SSL_CERTIFICATES="$certificates"
-
-                ACM_STATS_OK=1
-            fi
-        fi
-    fi
-
-    # Determinar el estado de las consultas.
-    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
-        AWS_CONNECTION_STATUS="Conectado a AWS"
-
-    elif ((CF_STATS_OK == 1 && ACM_STATS_OK == 0)); then
-        AWS_CONNECTION_STATUS="CloudFront OK; error en ACM"
-
-    elif ((CF_STATS_OK == 0 && ACM_STATS_OK == 1)); then
-        AWS_CONNECTION_STATUS="ACM OK; error en CloudFront"
-
+        TOTAL_CERTIFICATES="$(
+            jq -r '
+                (.CertificateSummaryList // []) | length
+            ' <<< "$certificates"
+        )"
     else
-        AWS_CONNECTION_STATUS="Error consultando AWS"
+        TOTAL_CERTIFICATES="Error"
     fi
 
-    ((CF_STATS_OK == 1 && ACM_STATS_OK == 1))
+    printf '%b✓ Consulta de AWS finalizada.%b\n' \
+        "$GREEN" "$R"
+
+    return 0
 }
 
 # ────────────────────────────────────────────────────────────────
-# PAUSA
+# INTERFAZ
 # ────────────────────────────────────────────────────────────────
 
 pause() {
-    printf '\n'
-
-    read -r -p \
-        "$(printf '%b' "${GRAY}Presiona ENTER para continuar...${R}")" _
+    printf '\n%bPresiona ENTER para continuar...%b' "$YELLOW" "$R"
+    read -r _
 }
-
-# ────────────────────────────────────────────────────────────────
-# ENCABEZADO
-# ────────────────────────────────────────────────────────────────
 
 header() {
     local title
     local subtitle
+    local version
 
     clear 2>/dev/null || true
 
-    title="${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
-    subtitle="${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
+    title="☁ AWS CLOUDFRONT MANAGER"
+    subtitle="Panel de administración de Amazon CloudFront"
+    version="Versión ${VERSION}"
 
-    printf '\n'
+    box_top
 
-    box_top "$CYAN"
+    box_center "${CYAN}${B}${title}${R}"
 
-    box_row "$CYAN" ""
+    box_separator
 
-    box_row "$CYAN" \
-        "$(center_text "$title" "$BOX_CONTENT")"
+    box_center "${WHITE}${subtitle}${R}"
+    box_center "${D}${version}${R}"
 
-    box_row "$CYAN" \
-        "$(center_text "$subtitle" "$BOX_CONTENT")"
-
-    box_row "$CYAN" ""
-
-    box_bottom "$CYAN"
+    box_bottom
 
     printf '\n'
 }
-
-# ────────────────────────────────────────────────────────────────
-# BARRA DE ESTADO
-# ────────────────────────────────────────────────────────────────
 
 status_bar() {
-    local status_text
-    local version_text
-    local status_width
-    local version_width
-    local spaces
-    local available_width
+    local label
+    local value
+    local color
 
-    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
-        status_text="${GREEN}✔ AWS conectado${R}"
+    label="${1-Estado}"
+    value="${2-Sin consultar}"
+    color="${3-${YELLOW}}"
 
-    elif ((CF_STATS_OK == 1 || ACM_STATS_OK == 1)); then
-        status_text="${YELLOW}⚠ Datos parciales de AWS${R}"
-
-    else
-        status_text="${RED}✖ AWS sin datos${R}"
-    fi
-
-    version_text="${YELLOW}${VERSION}${R}"
-
-    status_width="$(visible_width "$status_text")"
-    version_width="$(visible_width "$version_text")"
-
-    available_width=$(
-        ((
-            BOX_CONTENT
-            - status_width
-            - version_width
-        ))
-    )
-
-    ((available_width < 1)) && available_width=1
-
-    spaces="$(repeat_char ' ' "$available_width")"
-
-    box_top "$GRAY"
-
-    box_row "$GRAY" \
-        "${status_text}${spaces}${version_text}"
-
-    box_bottom "$GRAY"
+    printf '  %b●%b %s: %b%s%b\n' \
+        "$color" "$R" "$label" "$color" "$value" "$R"
 }
 
-# ────────────────────────────────────────────────────────────────
-# TÍTULOS DE SECCIÓN
-# ────────────────────────────────────────────────────────────────
-
 section_title() {
-    printf '\n%b\n' "${BLUE}${B}  ◈ $1${R}"
+    local title="${1-}"
+
+    printf '\n'
+    printf '  %b%s%b\n' "$B$CYAN" "$title" "$R"
+    printf '  %b%s%b\n' "$CYAN" \
+        "$(repeat_char '─' "$LINE_WIDTH")" "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -843,305 +736,148 @@ section_title() {
 # ────────────────────────────────────────────────────────────────
 
 dashboard_cards() {
-    local gap
+    # Fila superior: distribuciones y estado del servicio.
 
-    gap="$(repeat_char ' ' "$CARD_GAP")"
+    card_pair_top "$CYAN" "$BLUE"
 
-    # ────────────────────────────────────────────────────────────
-    # PRIMERA FILA
-    # ────────────────────────────────────────────────────────────
+    card_pair_row \
+        "☁ DISTRIBUCIONES" \
+        "⚙ ESTADO AWS" \
+        "$CYAN" "$BLUE"
 
-    cards_indent
+    card_pair_separator "$CYAN" "$BLUE"
 
-    card_border "$BLUE" top
+    card_pair_row \
+        "Total: ${TOTAL_DISTRIBUTIONS}" \
+        "Estado: ${AWS_STATUS}" \
+        "$CYAN" "$BLUE"
 
-    printf '%s' "$gap"
+    card_pair_row \
+        "Activas: ${ACTIVE_DISTRIBUTIONS}" \
+        "Cuenta AWS:" \
+        "$CYAN" "$BLUE"
 
-    card_border "$GREEN" top
+    card_pair_row \
+        "Deshabil.: ${DISABLED_DISTRIBUTIONS}" \
+        "${AWS_ACCOUNT}" \
+        "$CYAN" "$BLUE"
 
-    printf '\n'
+    card_pair_row \
+        "Pendientes: ${PENDING_DISTRIBUTIONS}" \
+        "Región: ${AWS_REGION}" \
+        "$CYAN" "$BLUE"
 
-    cards_indent
-
-    card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
-
-    printf '%s' "$gap"
-
-    card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
-
-    printf '\n'
-
-    cards_indent
-
-    card_row "$BLUE" "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
-
-    printf '%s' "$gap"
-
-    card_row "$GREEN" "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
+    card_pair_bottom "$CYAN" "$BLUE"
 
     printf '\n'
 
-    cards_indent
+    # Fila inferior: certificados y consulta.
 
-    card_border "$BLUE" bottom
+    card_pair_top "$MAGENTA" "$GREEN"
 
-    printf '%s' "$gap"
+    card_pair_row \
+        "🔐 CERTIFICADOS SSL" \
+        "📊 CONSULTA AWS" \
+        "$MAGENTA" "$GREEN"
 
-    card_border "$GREEN" bottom
+    card_pair_separator "$MAGENTA" "$GREEN"
 
-    printf '\n\n'
+    card_pair_row \
+        "Emitidos: ${TOTAL_CERTIFICATES}" \
+        "CloudFront: ${TOTAL_DISTRIBUTIONS}" \
+        "$MAGENTA" "$GREEN"
 
-    # ────────────────────────────────────────────────────────────
-    # SEGUNDA FILA
-    # ────────────────────────────────────────────────────────────
+    card_pair_row \
+        "Región ACM:" \
+        "Operativas: ${ACTIVE_DISTRIBUTIONS}" \
+        "$MAGENTA" "$GREEN"
 
-    cards_indent
+    card_pair_row \
+        "${AWS_ACM_REGION}" \
+        "Deshabil.: ${DISABLED_DISTRIBUTIONS}" \
+        "$MAGENTA" "$GREEN"
 
-    card_border "$YELLOW" top
+    card_pair_row \
+        "Estado: $([[ "$AWS_CONNECTED" == true ]] && printf 'OK' || printf 'N/D')" \
+        "Pendientes: ${PENDING_DISTRIBUTIONS}" \
+        "$MAGENTA" "$GREEN"
 
-    printf '%s' "$gap"
-
-    card_border "$MAGENTA" top
-
-    printf '\n'
-
-    cards_indent
-
-    card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
-
-    printf '%s' "$gap"
-
-    card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
-
-    printf '\n'
-
-    cards_indent
-
-    card_row "$YELLOW" "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
-
-    printf '%s' "$gap"
-
-    card_row "$MAGENTA" "${WHITE}${B}${SSL_CERTIFICATES}${R}"
-
-    printf '\n'
-
-    cards_indent
-
-    card_border "$YELLOW" bottom
-
-    printf '%s' "$gap"
-
-    card_border "$MAGENTA" bottom
-
-    printf '\n\n'
-
-    # ────────────────────────────────────────────────────────────
-    # ESTADO DE CONEXIÓN
-    # ────────────────────────────────────────────────────────────
-
-    if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
-
-        printf '%b\n' \
-            "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
-
-    else
-
-        printf '%b\n' \
-            "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
-    fi
-
-    # ────────────────────────────────────────────────────────────
-    # INFORMACIÓN DE CLOUDFRONT
-    # ────────────────────────────────────────────────────────────
-
-    if ((CF_STATS_OK == 1)); then
-
-        printf '%b\n' \
-            "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
-
-        printf '%b\n' \
-            "${GRAY}  ℹ En despliegue: ${ENABLED_PENDING_DISTRIBUTIONS}.${R}"
-
-    else
-
-        printf '%b\n' \
-            "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
-    fi
-
-    # ────────────────────────────────────────────────────────────
-    # INFORMACIÓN DE ACM
-    # ────────────────────────────────────────────────────────────
-
-    if ((ACM_STATS_OK == 1)); then
-
-        printf '%b\n' \
-            "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
-
-    else
-
-        printf '%b\n' \
-            "${YELLOW}  ⚠ No se pudieron consultar los certificados de ACM.${R}"
-    fi
+    card_pair_bottom "$MAGENTA" "$GREEN"
 }
 
-# ────────────────────────────────────────────────────────────────
-# MENÚ PRINCIPAL
-# ────────────────────────────────────────────────────────────────
-
 dashboard() {
-    # Recalcular dimensiones al actualizar el dashboard.
-    # Esto permite responder a cambios en el ancho de la terminal.
-    if ! init_dimensions; then
-        printf '%b\n' \
-            "${RED}✖ No se pudo inicializar el diseño del panel.${R}"
+    printf '\n'
 
-        return 1
-    fi
-
-    # Actualizar las estadísticas de AWS.
-    load_aws_statistics || true
-
-    header
-
-    status_bar
-
-    section_title "RESUMEN DEL SISTEMA"
+    section_title "DASHBOARD GENERAL"
 
     dashboard_cards
 
     printf '\n'
 
-    line
-
-    section_title "CENTRO DE CONTROL"
-
-    box_top "$CYAN"
-
-    box_row "$CYAN" \
-        "${YELLOW}[1]${R}  🚀 Crear distribución"
-
-    box_row "$CYAN" \
-        "${YELLOW}[2]${R}  📊 Ver estado de distribuciones"
-
-    box_row "$CYAN" \
-        "${YELLOW}[3]${R}  ⚙️ Editar distribución"
-
-    box_row "$CYAN" \
-        "${YELLOW}[4]${R}  🔄 Activar / Desactivar distribución"
-
-    box_row "$CYAN" \
-        "${YELLOW}[5]${R}  🗑️ Eliminar distribución"
-
-    box_row "$CYAN" ""
-
-    box_separator "$CYAN"
-
-    box_row "$CYAN" ""
-
-    box_row "$CYAN" \
-        "${YELLOW}[6]${R}  🔐 Crear certificado SSL"
-
-    box_row "$CYAN" \
-        "${YELLOW}[7]${R}  🧹 Remover el panel"
-
-    box_row "$CYAN" \
-        "${YELLOW}[8]${R}  🚪 Salir"
-
-    box_bottom "$CYAN"
+    status_bar \
+        "Conexión AWS" \
+        "$AWS_STATUS" \
+        "$([[ "$AWS_CONNECTED" == true ]] && printf '%s' "$GREEN" || printf '%s' "$YELLOW")"
 
     printf '\n'
-
-    printf '%b\n' \
-        "${GRAY}  AWS CloudFront · Administración · Seguridad SSL${R}"
-
-    printf '\n'
-
-    printf '%b' \
-        "${CYAN}${B}  ❯ Selecciona una opción [1-8]: ${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
-# EJECUCIÓN DE MÓDULOS REMOTOS
+# EJECUCIÓN DE MÓDULOS
 # ────────────────────────────────────────────────────────────────
 
 run_module() {
-    local module="$1"
+    local module="${1-}"
     local url="${REPO}/${module}"
-    local tmp_file
-    local result
+    local temporary_file
 
-    tmp_file="$(mktemp 2>/dev/null)" || {
-
-        printf '%b\n' \
-            "${RED}✖ No se pudo crear un archivo temporal.${R}"
-
+    temporary_file="$(mktemp 2>/dev/null)" || {
+        printf '%b❌ No se pudo crear un archivo temporal.%b\n' \
+            "$RED" "$R"
         pause
-
         return 1
     }
 
-    printf '\n'
+    printf '\n%b⏳ Descargando módulo: %s%b\n' \
+        "$CYAN" "$module" "$R"
 
-    printf '%b\n' \
-        "${CYAN}⟳ Descargando módulo: ${WHITE}${module}${R}"
+    if ! curl -fsSL "$url" -o "$temporary_file"; then
+        printf '%b❌ No se pudo descargar el módulo.%b\n' \
+            "$RED" "$R"
 
-    if ! curl -fsSL \
-        --connect-timeout 10 \
-        --max-time 120 \
-        "$url" -o "$tmp_file"; then
-
-        printf '%b\n' \
-            "${RED}✖ No se pudo descargar el módulo.${R}"
-
-        printf '%b\n' \
-            "${GRAY}Verifica la conexión y que el archivo exista en GitHub.${R}"
-
-        rm -f -- "$tmp_file"
-
+        rm -f "$temporary_file"
         pause
-
         return 1
     fi
 
-    if [[ ! -s "$tmp_file" ]]; then
+    if [[ ! -s "$temporary_file" ]]; then
+        printf '%b❌ El módulo descargado está vacío.%b\n' \
+            "$RED" "$R"
 
-        printf '%b\n' \
-            "${RED}✖ El módulo descargado está vacío.${R}"
-
-        rm -f -- "$tmp_file"
-
+        rm -f "$temporary_file"
         pause
-
         return 1
     fi
 
-    if ! bash -n "$tmp_file"; then
+    if ! bash -n "$temporary_file"; then
+        printf '%b❌ El módulo contiene errores de sintaxis.%b\n' \
+            "$RED" "$R"
 
-        printf '%b\n' \
-            "${RED}✖ El módulo contiene errores de sintaxis Bash.${R}"
-
-        rm -f -- "$tmp_file"
-
+        rm -f "$temporary_file"
         pause
-
         return 1
     fi
 
-    printf '%b\n' \
-        "${GREEN}✔ Módulo verificado. Iniciando...${R}"
+    chmod +x "$temporary_file"
 
-    printf '\n'
+    bash "$temporary_file"
+    local result=$?
 
-    bash "$tmp_file"
+    rm -f "$temporary_file"
 
-    result=$?
-
-    rm -f -- "$tmp_file"
-
-    if ((result != 0)); then
-
-        printf '\n%b\n' \
-            "${YELLOW}⚠ El módulo terminó con código ${result}.${R}"
+    if (( result != 0 )); then
+        printf '\n%b⚠ El módulo finalizó con código %s.%b\n' \
+            "$YELLOW" "$result" "$R"
     fi
 
     pause
@@ -1154,171 +890,125 @@ run_module() {
 # ────────────────────────────────────────────────────────────────
 
 uninstall_manager() {
-    local confirm
+    local confirmation
 
     printf '\n'
 
-    printf '%b\n' \
-        "${YELLOW}${B}⚠ DESINSTALACIÓN DEL PANEL${R}"
-
-    printf '%b\n' \
-        "${GRAY}Se eliminará el comando local aws-manager.${R}"
-
-    printf '%b\n' \
-        "${GRAY}No se borrarán distribuciones ni certificados de AWS.${R}"
+    box_top
+    box_center "${RED}${B}DESINSTALACIÓN DEL PANEL${R}"
+    box_separator
+    box_center "Se eliminará el comando local:"
+    box_center "${YELLOW}${BIN_PATH}${R}"
+    box_bottom
 
     printf '\n'
+    printf '%b¿Deseas continuar? [s/N]: %b' "$YELLOW" "$R"
 
-    read -r -p \
-        "$(printf '%b' "${WHITE}¿Deseas continuar? [s/N]: ${R}")" \
-        confirm
+    read -r confirmation
 
-    case "$confirm" in
-
+    case "$confirmation" in
         s|S|si|SI|Si|sí|Sí|SÍ)
-
-            if rm -f -- "$BIN_PATH"; then
-
-                printf '\n%b\n' \
-                    "${GREEN}✔ Comando aws-manager eliminado.${R}"
-
-                printf '%b\n' \
-                    "${GRAY}Los recursos de AWS permanecen intactos.${R}"
-
+            if [[ -f "$BIN_PATH" ]]; then
+                if rm -f "$BIN_PATH"; then
+                    printf '\n%b✓ Panel desinstalado correctamente.%b\n' \
+                        "$GREEN" "$R"
+                else
+                    printf '\n%b❌ No se pudo eliminar el comando.%b\n' \
+                        "$RED" "$R"
+                fi
             else
-
-                printf '\n%b\n' \
-                    "${RED}✖ No se pudo eliminar el comando.${R}"
-
-                pause
+                printf '\n%b⚠ El comando no existe en la ruta indicada.%b\n' \
+                    "$YELLOW" "$R"
             fi
-
-            exit 0
             ;;
-
         *)
-
-            printf '\n%b\n' \
-                "${GRAY}Desinstalación cancelada.${R}"
-
-            pause
+            printf '\n%bOperación cancelada.%b\n' "$YELLOW" "$R"
             ;;
     esac
+
+    pause
 }
 
 # ────────────────────────────────────────────────────────────────
-# MENÚ Y CONTROL DE OPCIONES
+# MENÚ PRINCIPAL
 # ────────────────────────────────────────────────────────────────
 
 main() {
     local option
-    local confirm
+
+    install_manager "$@" || return 1
 
     if ! check_dependencies; then
-        return 1
-    fi
-
-    # Inicializar las dimensiones antes de dibujar el dashboard.
-    if ! init_dimensions; then
+        pause
         return 1
     fi
 
     while true; do
+        header
+        dashboard
 
-        dashboard || {
-            printf '\n%b\n' \
-                "${RED}✖ No se pudo actualizar el dashboard.${R}"
+        section_title "ADMINISTRACIÓN CLOUDFRONT"
 
-            pause
+        box_top
+        box_row "${GREEN}[1]${R} Crear distribución CloudFront"
+        box_row "${CYAN}[2]${R} Consultar distribuciones"
+        box_row "${YELLOW}[3]${R} Editar distribución"
+        box_row "${MAGENTA}[4]${R} Controlar estado de distribución"
+        box_row "${RED}[5]${R} Eliminar distribución"
+        box_row "${BLUE}[6]${R} Crear certificado SSL/TLS"
+        box_separator
+        box_row "${CYAN}[7]${R} Actualizar estadísticas AWS"
+        box_row "${RED}[8]${R} Desinstalar panel"
+        box_separator
+        box_row "${YELLOW}[0]${R} Salir"
+        box_bottom
 
-            continue
-        }
+        printf '\n'
+        printf '  %bSelecciona una opción:%b ' "$B$CYAN" "$R"
 
-        if ! read -r option; then
-
-            printf '\n%b\n' \
-                "${GRAY}Entrada cerrada. Saliendo.${R}"
-
-            exit 0
-        fi
+        read -r option
 
         case "$option" in
-
             1)
                 run_module "create-distribution.sh"
                 ;;
-
             2)
                 run_module "status-distribution.sh"
                 ;;
-
             3)
                 run_module "edit-distribution.sh"
                 ;;
-
             4)
                 run_module "control-status-distribution.sh"
                 ;;
-
             5)
-
-                printf '\n%b\n' \
-                    "${RED}${B}⚠ ATENCIÓN: ELIMINAR DISTRIBUCIÓN${R}"
-
-                read -r -p \
-                    "$(printf '%b' "${YELLOW}¿Continuar con el módulo de eliminación? [s/N]: ${R}")" \
-                    confirm
-
-                case "$confirm" in
-
-                    s|S|si|SI|Si|sí|Sí|SÍ)
-
-                        run_module "delete-distribution.sh"
-                        ;;
-
-                    *)
-
-                        printf '%b\n' \
-                            "${GRAY}Operación cancelada.${R}"
-
-                        pause
-                        ;;
-                esac
+                run_module "delete-distribution.sh"
                 ;;
-
             6)
                 run_module "create-certificate.sh"
                 ;;
-
             7)
+                load_aws_statistics
+                pause
+                ;;
+            8)
                 uninstall_manager
                 ;;
-
-            8)
+            0)
+                clear 2>/dev/null || true
 
                 printf '\n'
-
-                box_top "$CYAN"
-
-                box_row "$CYAN" \
-                    "${GREEN}${B}✔ Gracias por utilizar AWS Manager${R}"
-
-                box_row "$CYAN" \
-                    "${GRAY}Hasta pronto.${R}"
-
-                box_bottom "$CYAN"
-
+                box_top
+                box_center "${GREEN}${B}¡GRACIAS POR UTILIZAR AWS CLOUDFRONT MANAGER!${R}"
+                box_center "Saliendo del panel..."
+                box_bottom
                 printf '\n'
 
                 exit 0
                 ;;
-
             *)
-
-                printf '\n%b\n' \
-                    "${RED}✖ Opción inválida. Selecciona del 1 al 8.${R}"
-
-                sleep 1
+                printf '\n%b❌ Opción no válida.%b\n' "$RED" "$R"
+                pause
                 ;;
         esac
     done
