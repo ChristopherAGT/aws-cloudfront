@@ -7,7 +7,6 @@
 # ==============================================================
 
 set -o pipefail
-
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 export AWS_PAGER=""
 
@@ -20,7 +19,7 @@ REPO="https://raw.githubusercontent.com/ChristopherAGT/aws-cloudfront/main"
 BIN_DIR="${HOME}/.local/bin"
 BIN_PATH="${BIN_DIR}/aws-manager"
 
-VERSION="v1.3"
+VERSION="v1.1"
 
 AWS_REGION="us-east-1"
 AWS_ACM_REGION="${AWS_ACM_REGION:-us-east-1}"
@@ -37,40 +36,29 @@ CF_STATS_OK=0
 ACM_STATS_OK=0
 
 # ────────────────────────────────────────────────────────────────
-# DIMENSIONES DEL DISEÑO
-# ────────────────────────────────────────────────────────────────
-#
-# MARCO GENERAL:
-#
-#   2 espacios de margen
-#   + 1 borde izquierdo
-#   + 1 espacio interior
-#   + 46 columnas de contenido
-#   + 1 espacio interior
-#   + 1 borde derecho
-#
-#   Ancho exterior: 50 columnas.
-#   Ancho total con margen: 52 columnas.
-#
-# TARJETAS:
-#
-#   1 borde + 1 espacio + 20 columnas
-#   + 1 espacio + 1 borde = 24 columnas.
-#
-#   24 + 2 de separación + 24 = 50 columnas.
-#
-# IMPORTANTE:
-# Las dimensiones se declaran antes de las funciones.
-# No se utilizan nombres de variables como comandos.
+# CONFIGURACIÓN DEL DISEÑO ADAPTABLE
 # ────────────────────────────────────────────────────────────────
 
-BOX_INNER=48
-BOX_CONTENT=46
-LINE_WIDTH=50
+# Ancho mínimo y máximo del panel completo.
+MIN_PANEL_WIDTH=46
+MAX_PANEL_WIDTH=100
 
-CARD_INNER=22
-CARD_CONTENT=20
+# Márgenes horizontales exteriores.
+PANEL_MARGIN=2
+
+# Separación entre las tarjetas.
 CARD_GAP=2
+
+# Dimensiones calculadas por init_dimensions.
+PANEL_WIDTH=46
+
+BOX_INNER=44
+BOX_CONTENT=42
+LINE_WIDTH=46
+
+CARD_WIDTH=22
+CARD_INNER=20
+CARD_CONTENT=18
 
 # ────────────────────────────────────────────────────────────────
 # COLORES ANSI
@@ -105,48 +93,102 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────
-# VALIDACIÓN DE DIMENSIONES
+# DIMENSIONES ADAPTABLES
 # ────────────────────────────────────────────────────────────────
 
-validate_dimensions() {
-    local name
-    local value
+init_dimensions() {
+    local terminal_width
+    local available_width
+    local detected_width
+    local card_space
 
-    for name in \
-        BOX_INNER \
-        BOX_CONTENT \
-        LINE_WIDTH \
-        CARD_INNER \
-        CARD_CONTENT \
-        CARD_GAP
-    do
-        value="${!name:-}"
+    # Obtener el ancho real de la terminal.
+    terminal_width=""
 
-        if [[ ! "$value" =~ ^[0-9]+$ ]]; then
-            printf '%b\n' \
-                "${RED}✖ Dimensión inválida: ${name}.${R}" >&2
-
-            return 1
-        fi
-    done
-
-    if ((BOX_INNER != BOX_CONTENT + 2)); then
-        printf '%b\n' \
-            "${RED}✖ Las dimensiones del panel general no coinciden.${R}" >&2
-
-        return 1
+    if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
+        terminal_width="$(tput cols 2>/dev/null || true)"
     fi
 
-    if ((CARD_INNER != CARD_CONTENT + 2)); then
-        printf '%b\n' \
-            "${RED}✖ Las dimensiones de las tarjetas no coinciden.${R}" >&2
+    # Alternativa cuando tput no proporciona dimensiones.
+    if [[ ! "$terminal_width" =~ ^[0-9]+$ ]] ||
+       ((terminal_width < 1)); then
 
-        return 1
+        terminal_width="${COLUMNS:-80}"
     fi
 
-    if ((LINE_WIDTH != CARD_INNER + CARD_GAP + 2 + 2)); then
+    # Garantizar que el ancho sea numérico.
+    if [[ ! "$terminal_width" =~ ^[0-9]+$ ]]; then
+        terminal_width=80
+    fi
+
+    # Reservar espacio a ambos lados del panel.
+    available_width=$((terminal_width - PANEL_MARGIN * 2))
+
+    # Aplicar los límites de diseño.
+    if ((available_width < MIN_PANEL_WIDTH)); then
+        available_width="$MIN_PANEL_WIDTH"
+    fi
+
+    if ((available_width > MAX_PANEL_WIDTH)); then
+        available_width="$MAX_PANEL_WIDTH"
+    fi
+
+    # Usar un ancho par para distribuir simétricamente
+    # las dos tarjetas y su separación.
+    if ((available_width % 2 != 0)); then
+        available_width=$((available_width - 1))
+    fi
+
+    # Protección adicional.
+    if ((available_width < MIN_PANEL_WIDTH)); then
+        available_width="$MIN_PANEL_WIDTH"
+    fi
+
+    detected_width="$available_width"
+
+    # Ancho total del panel, incluidos sus bordes.
+    PANEL_WIDTH="$detected_width"
+
+    # Marco general:
+    #
+    # ┌ + BOX_INNER + ┐ = PANEL_WIDTH
+    #
+    BOX_INNER=$((PANEL_WIDTH - 2))
+
+    # Filas:
+    #
+    # │ + espacio + contenido + espacio + │
+    #
+    BOX_CONTENT=$((PANEL_WIDTH - 4))
+
+    # Línea divisoria alineada con el panel.
+    LINE_WIDTH="$PANEL_WIDTH"
+
+    # ────────────────────────────────────────────────────────────
+    # DIMENSIONES DE LAS TARJETAS
+    # ────────────────────────────────────────────────────────────
+
+    # Las dos tarjetas deben ocupar el ancho del panel:
+    #
+    # CARD_WIDTH + CARD_GAP + CARD_WIDTH = PANEL_WIDTH
+    #
+    card_space=$((PANEL_WIDTH - CARD_GAP))
+
+    CARD_WIDTH=$((card_space / 2))
+
+    # Bordes superior e inferior.
+    CARD_INNER=$((CARD_WIDTH - 2))
+
+    # Filas interiores.
+    CARD_CONTENT=$((CARD_WIDTH - 4))
+
+    # Evitar dimensiones inválidas.
+    if ((BOX_CONTENT < 1 ||
+         CARD_CONTENT < 1 ||
+         CARD_INNER < 1)); then
+
         printf '%b\n' \
-            "${RED}✖ Las dimensiones del dashboard no coinciden.${R}" >&2
+            "${RED}✖ Error al calcular las dimensiones del dashboard.${R}"
 
         return 1
     fi
@@ -155,9 +197,10 @@ validate_dimensions() {
 }
 
 # ────────────────────────────────────────────────────────────────
-# UTILIDADES DE TEXTO
+# UTILIDADES DE TEXTO Y ALINEACIÓN
 # ────────────────────────────────────────────────────────────────
 
+# Elimina secuencias ANSI.
 strip_ansi() {
     printf '%s' "$1" |
         python3 -c '
@@ -176,22 +219,7 @@ sys.stdout.write(text)
 '
 }
 
-# ────────────────────────────────────────────────────────────────
-# ANCHO VISUAL UNICODE
-# ────────────────────────────────────────────────────────────────
-#
-# Se cuentan las columnas de terminal, no los bytes.
-# Los códigos ANSI se eliminan antes del cálculo.
-#
-# Se consideran:
-# - Caracteres de ancho doble.
-# - Emojis.
-# - Marcas combinantes.
-# - Selectores de presentación.
-# - Secuencias de unión.
-# - Indicadores de banderas.
-# ────────────────────────────────────────────────────────────────
-
+# Calcula el ancho visual del texto Unicode.
 visible_width() {
     printf '%s' "$1" |
         python3 -c '
@@ -209,39 +237,18 @@ text = re.sub(
 
 width = 0
 i = 0
-length = len(text)
 
-while i < length:
+while i < len(text):
     char = text[i]
     code = ord(char)
 
-    # Saltos de línea y retornos.
-    if char in ("\n", "\r"):
+    # Secuencias de unión y selectores de presentación.
+    if code in (0x200D, 0xFE0E, 0xFE0F):
         i += 1
         continue
 
-    # Secuencias de unión.
-    if code == 0x200D:
-        i += 1
-        continue
-
-    # Selectores de presentación.
-    if code in (0xFE0E, 0xFE0F):
-        i += 1
-        continue
-
-    # Marcas combinantes.
-    if unicodedata.combining(char):
-        i += 1
-        continue
-
-    # Selectores suplementarios.
-    if 0xE0100 <= code <= 0xE01EF:
-        i += 1
-        continue
-
-    # Modificadores de tono de piel.
-    if 0x1F3FB <= code <= 0x1F3FF:
+    # Marcas combinantes y selectores suplementarios.
+    if unicodedata.combining(char) or 0xE0100 <= code <= 0xE01EF:
         i += 1
         continue
 
@@ -249,7 +256,7 @@ while i < length:
     if 0x1F1E6 <= code <= 0x1F1FF:
         width += 2
 
-        if i + 1 < length:
+        if i + 1 < len(text):
             next_code = ord(text[i + 1])
 
             if 0x1F1E6 <= next_code <= 0x1F1FF:
@@ -258,7 +265,13 @@ while i < length:
         i += 1
         continue
 
-    # Emoji y caracteres de ancho doble.
+    # Emoji con selector de presentación.
+    if i + 1 < len(text) and ord(text[i + 1]) == 0xFE0F:
+        width += 2
+        i += 2
+        continue
+
+    # Emojis y caracteres de ancho doble.
     if (
         unicodedata.east_asian_width(char) in ("W", "F")
         or 0x1F000 <= code <= 0x1FAFF
@@ -274,18 +287,13 @@ print(width)
 '
 }
 
-# ────────────────────────────────────────────────────────────────
-# REPETICIÓN DE CARACTERES
-# ────────────────────────────────────────────────────────────────
-
+# Genera caracteres repetidos.
 repeat_char() {
     local char="$1"
     local count="$2"
     local result=""
 
-    if [[ ! "$count" =~ ^[0-9]+$ ]]; then
-        count=0
-    fi
+    ((count < 0)) && count=0
 
     while ((count > 0)); do
         result+="$char"
@@ -295,14 +303,8 @@ repeat_char() {
     printf '%s' "$result"
 }
 
-# ────────────────────────────────────────────────────────────────
-# AJUSTE DE TEXTO
-# ────────────────────────────────────────────────────────────────
-#
-# Devuelve texto con el ancho visual solicitado.
-# No permite que el contenido ensanche las cajas.
-# ────────────────────────────────────────────────────────────────
-
+# Ajusta el contenido a un ancho visual exacto.
+# Los códigos ANSI no cuentan como columnas.
 fit_text() {
     local content="$1"
     local target_width="$2"
@@ -310,47 +312,31 @@ fit_text() {
     local width
     local padding
 
-    if [[ ! "$target_width" =~ ^[0-9]+$ ]]; then
-        target_width=0
-    fi
-
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
 
-    if [[ ! "$width" =~ ^[0-9]+$ ]]; then
-        width=0
-    fi
-
-    # Recortar únicamente si el contenido excede el ancho.
+    # Recortar si el contenido supera el ancho disponible.
     if ((width > target_width)); then
         content="$plain"
 
-        while [[ -n "$content" ]] && ((width > target_width)); do
+        while ((width > target_width)) && [[ -n "$content" ]]; do
             content="${content%?}"
             width="$(visible_width "$content")"
-
-            if [[ ! "$width" =~ ^[0-9]+$ ]]; then
-                width=0
-            fi
         done
 
         plain="$content"
+        width="$(visible_width "$plain")"
     fi
 
     padding=$((target_width - width))
 
-    if ((padding < 0)); then
-        padding=0
-    fi
+    ((padding < 0)) && padding=0
 
     printf '%b' "$content"
     printf '%*s' "$padding" ''
 }
 
-# ────────────────────────────────────────────────────────────────
-# CENTRADO DE TEXTO
-# ────────────────────────────────────────────────────────────────
-
+# Centra el contenido según su ancho visual.
 center_text() {
     local content="$1"
     local total="$2"
@@ -361,14 +347,6 @@ center_text() {
 
     plain="$(strip_ansi "$content")"
     width="$(visible_width "$plain")"
-
-    if [[ ! "$width" =~ ^[0-9]+$ ]]; then
-        width=0
-    fi
-
-    if [[ ! "$total" =~ ^[0-9]+$ ]]; then
-        total=0
-    fi
 
     if ((width >= total)); then
         fit_text "$content" "$total"
@@ -384,6 +362,14 @@ center_text() {
 }
 
 # ────────────────────────────────────────────────────────────────
+# MÁRGENES GENERALES
+# ────────────────────────────────────────────────────────────────
+
+panel_indent() {
+    printf '%*s' "$PANEL_MARGIN" ''
+}
+
+# ────────────────────────────────────────────────────────────────
 # MARCOS DEL PANEL GENERAL
 # ────────────────────────────────────────────────────────────────
 
@@ -393,8 +379,8 @@ box_top() {
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
 
-    printf '  %b╭%s╮%b\n' \
-        "$color" "$horizontal" "$R"
+    panel_indent
+    printf '%b╭%s╮%b\n' "$color" "$horizontal" "$R"
 }
 
 box_bottom() {
@@ -403,8 +389,8 @@ box_bottom() {
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
 
-    printf '  %b╰%s╯%b\n' \
-        "$color" "$horizontal" "$R"
+    panel_indent
+    printf '%b╰%s╯%b\n' "$color" "$horizontal" "$R"
 }
 
 box_separator() {
@@ -413,11 +399,11 @@ box_separator() {
 
     horizontal="$(repeat_char '─' "$BOX_INNER")"
 
-    printf '  %b├%s┤%b\n' \
-        "$color" "$horizontal" "$R"
+    panel_indent
+    printf '%b├%s┤%b\n' "$color" "$horizontal" "$R"
 }
 
-# Cada fila tiene exactamente el ancho del marco.
+# Cada fila coincide con el ancho total del marco.
 box_row() {
     local color="$1"
     local content="$2"
@@ -425,21 +411,21 @@ box_row() {
 
     fitted="$(fit_text "$content" "$BOX_CONTENT")"
 
-    printf '  %b│%b ' "$color" "$R"
+    panel_indent
+
+    printf '%b│%b ' "$color" "$R"
     printf '%b' "$fitted"
     printf ' %b│%b\n' "$color" "$R"
 }
 
-# ────────────────────────────────────────────────────────────────
-# LÍNEA DIVISORIA
-# ────────────────────────────────────────────────────────────────
-
+# Línea divisoria con las mismas dimensiones del panel.
 line() {
-    local horizontal
+    panel_indent
 
-    horizontal="$(repeat_char '─' "$LINE_WIDTH")"
-
-    printf '  %b%s%b\n' "$CYAN" "$horizontal" "$R"
+    printf '%b%s%b\n' \
+        "$CYAN" \
+        "$(repeat_char '─' "$LINE_WIDTH")" \
+        "$R"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -464,6 +450,7 @@ card_border() {
     esac
 }
 
+# Cada fila de tarjeta ocupa CARD_WIDTH columnas.
 card_row() {
     local color="$1"
     local content="$2"
@@ -476,14 +463,19 @@ card_row() {
     printf ' %b│%b' "$color" "$R"
 }
 
+# Inicio de una fila de tarjetas.
+cards_indent() {
+    panel_indent
+}
+
 # ────────────────────────────────────────────────────────────────
 # INSTALACIÓN COMO COMANDO GLOBAL
 # ────────────────────────────────────────────────────────────────
 
 install_manager() {
     local source_path
-    local resolved_source
     local resolved_bin
+    local resolved_source
     local temp_install
 
     source_path="$0"
@@ -496,8 +488,7 @@ install_manager() {
         readlink -f -- "$BIN_PATH" 2>/dev/null || true
     )"
 
-    # Si ya se está ejecutando el archivo instalado,
-    # no copiarlo sobre sí mismo.
+    # Si ya se ejecuta el archivo instalado, no volver a copiarlo.
     if [[ -n "$resolved_source" &&
           -n "$resolved_bin" &&
           "$resolved_source" == "$resolved_bin" ]]; then
@@ -555,7 +546,7 @@ install_manager() {
     fi
 
     printf '\n%b\n' \
-        "${GREEN}✔ AWS Manager instalado correctamente.${R}"
+        "${GREEN}✔ AWS Manager actualizado correctamente.${R}"
 
     printf '%b\n\n' \
         "${GRAY}Comando: ${BIN_PATH}${R}"
@@ -563,7 +554,6 @@ install_manager() {
     exec "$BIN_PATH" "$@"
 }
 
-# Ejecutar la instalación antes de iniciar el panel.
 install_manager "$@"
 
 # ────────────────────────────────────────────────────────────────
@@ -573,29 +563,14 @@ install_manager "$@"
 check_dependencies() {
     local missing=()
 
-    command -v curl >/dev/null 2>&1 ||
-        missing+=("curl")
-
-    command -v bash >/dev/null 2>&1 ||
-        missing+=("bash")
-
-    command -v awk >/dev/null 2>&1 ||
-        missing+=("awk")
-
-    command -v jq >/dev/null 2>&1 ||
-        missing+=("jq")
-
-    command -v aws >/dev/null 2>&1 ||
-        missing+=("aws-cli")
-
-    command -v mktemp >/dev/null 2>&1 ||
-        missing+=("mktemp")
-
-    command -v python3 >/dev/null 2>&1 ||
-        missing+=("python3")
-
-    command -v readlink >/dev/null 2>&1 ||
-        missing+=("readlink")
+    command -v curl >/dev/null 2>&1 || missing+=("curl")
+    command -v bash >/dev/null 2>&1 || missing+=("bash")
+    command -v awk >/dev/null 2>&1 || missing+=("awk")
+    command -v jq >/dev/null 2>&1 || missing+=("jq")
+    command -v aws >/dev/null 2>&1 || missing+=("aws-cli")
+    command -v mktemp >/dev/null 2>&1 || missing+=("mktemp")
+    command -v python3 >/dev/null 2>&1 || missing+=("python3")
+    command -v readlink >/dev/null 2>&1 || missing+=("readlink")
 
     if ((${#missing[@]} > 0)); then
         printf '\n%b\n' \
@@ -742,6 +717,7 @@ load_aws_statistics() {
 
             if [[ "$certificates" =~ ^[0-9]+$ ]]; then
                 SSL_CERTIFICATES="$certificates"
+
                 ACM_STATS_OK=1
             fi
         fi
@@ -782,24 +758,24 @@ pause() {
 header() {
     local title
     local subtitle
-    local centered_title
-    local centered_subtitle
 
     clear 2>/dev/null || true
 
     title="${WHITE}${B}☁ AWS CLOUDFRONT MANAGER${R}"
     subtitle="${GRAY}DASHBOARD DE ADMINISTRACIÓN${R}"
 
-    centered_title="$(center_text "$title" "$BOX_CONTENT")"
-    centered_subtitle="$(center_text "$subtitle" "$BOX_CONTENT")"
-
     printf '\n'
 
     box_top "$CYAN"
 
     box_row "$CYAN" ""
-    box_row "$CYAN" "$centered_title"
-    box_row "$CYAN" "$centered_subtitle"
+
+    box_row "$CYAN" \
+        "$(center_text "$title" "$BOX_CONTENT")"
+
+    box_row "$CYAN" \
+        "$(center_text "$subtitle" "$BOX_CONTENT")"
+
     box_row "$CYAN" ""
 
     box_bottom "$CYAN"
@@ -816,16 +792,8 @@ status_bar() {
     local version_text
     local status_width
     local version_width
-    local available_width
     local spaces
-    local content_width
-
-    # Obtener el ancho desde la configuración.
-    content_width="${BOX_CONTENT:-46}"
-
-    if [[ ! "$content_width" =~ ^[0-9]+$ ]]; then
-        content_width=46
-    fi
+    local available_width
 
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
         status_text="${GREEN}✔ AWS conectado${R}"
@@ -842,17 +810,15 @@ status_bar() {
     status_width="$(visible_width "$status_text")"
     version_width="$(visible_width "$version_text")"
 
-    # Validación numérica para evitar errores aritméticos.
-    [[ "$status_width" =~ ^[0-9]+$ ]] || status_width=0
-    [[ "$version_width" =~ ^[0-9]+$ ]] || version_width=0
-
     available_width=$(
-        (content_width - status_width - version_width)
+        ((
+            BOX_CONTENT
+            - status_width
+            - version_width
+        ))
     )
 
-    if ((available_width < 1)); then
-        available_width=1
-    fi
+    ((available_width < 1)) && available_width=1
 
     spaces="$(repeat_char ' ' "$available_width")"
 
@@ -869,8 +835,7 @@ status_bar() {
 # ────────────────────────────────────────────────────────────────
 
 section_title() {
-    printf '\n%b\n' \
-        "${BLUE}${B}  ◈ $1${R}"
+    printf '\n%b\n' "${BLUE}${B}  ◈ $1${R}"
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -882,115 +847,138 @@ dashboard_cards() {
 
     gap="$(repeat_char ' ' "$CARD_GAP")"
 
-    # Primera fila: distribuciones y operativas.
+    # ────────────────────────────────────────────────────────────
+    # PRIMERA FILA
+    # ────────────────────────────────────────────────────────────
 
-    printf '  '
+    cards_indent
 
     card_border "$BLUE" top
+
     printf '%s' "$gap"
+
     card_border "$GREEN" top
 
     printf '\n'
 
-    printf '  '
+    cards_indent
 
     card_row "$BLUE" "☁ ${BLUE}Distribuciones${R}"
+
     printf '%s' "$gap"
+
     card_row "$GREEN" "🟢 ${GREEN}Operativas${R}"
 
     printf '\n'
 
-    printf '  '
+    cards_indent
 
-    card_row "$BLUE" \
-        "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
+    card_row "$BLUE" "${WHITE}${B}${TOTAL_DISTRIBUTIONS}${R}"
 
     printf '%s' "$gap"
 
-    card_row "$GREEN" \
-        "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
+    card_row "$GREEN" "${WHITE}${B}${ENABLED_DISTRIBUTIONS}${R}"
 
     printf '\n'
 
-    printf '  '
+    cards_indent
 
     card_border "$BLUE" bottom
+
     printf '%s' "$gap"
+
     card_border "$GREEN" bottom
 
     printf '\n\n'
 
-    # Segunda fila: deshabilitadas y certificados.
+    # ────────────────────────────────────────────────────────────
+    # SEGUNDA FILA
+    # ────────────────────────────────────────────────────────────
 
-    printf '  '
+    cards_indent
 
     card_border "$YELLOW" top
+
     printf '%s' "$gap"
+
     card_border "$MAGENTA" top
 
     printf '\n'
 
-    printf '  '
+    cards_indent
 
-    card_row "$YELLOW" \
-        "🟡 ${YELLOW}Deshabilitadas${R}"
-
-    printf '%s' "$gap"
-
-    card_row "$MAGENTA" \
-        "🔐 ${MAGENTA}Certificados SSL${R}"
-
-    printf '\n'
-
-    printf '  '
-
-    card_row "$YELLOW" \
-        "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
+    card_row "$YELLOW" "🟡 ${YELLOW}Deshabilitadas${R}"
 
     printf '%s' "$gap"
 
-    card_row "$MAGENTA" \
-        "${WHITE}${B}${SSL_CERTIFICATES}${R}"
+    card_row "$MAGENTA" "🔐 ${MAGENTA}Certificados SSL${R}"
 
     printf '\n'
 
-    printf '  '
+    cards_indent
+
+    card_row "$YELLOW" "${WHITE}${B}${DISABLED_DISTRIBUTIONS}${R}"
+
+    printf '%s' "$gap"
+
+    card_row "$MAGENTA" "${WHITE}${B}${SSL_CERTIFICATES}${R}"
+
+    printf '\n'
+
+    cards_indent
 
     card_border "$YELLOW" bottom
+
     printf '%s' "$gap"
+
     card_border "$MAGENTA" bottom
 
     printf '\n\n'
 
-    # Estado de conexión.
+    # ────────────────────────────────────────────────────────────
+    # ESTADO DE CONEXIÓN
+    # ────────────────────────────────────────────────────────────
 
     if ((CF_STATS_OK == 1 && ACM_STATS_OK == 1)); then
+
         printf '%b\n' \
             "${GREEN}  ✔ ${AWS_CONNECTION_STATUS}${R}"
+
     else
+
         printf '%b\n' \
             "${YELLOW}  ⚠ ${AWS_CONNECTION_STATUS}${R}"
     fi
 
-    # Información de CloudFront.
+    # ────────────────────────────────────────────────────────────
+    # INFORMACIÓN DE CLOUDFRONT
+    # ────────────────────────────────────────────────────────────
 
     if ((CF_STATS_OK == 1)); then
+
         printf '%b\n' \
             "${GRAY}  ℹ Operativas = habilitadas y estado Deployed.${R}"
 
         printf '%b\n' \
             "${GRAY}  ℹ En despliegue: ${ENABLED_PENDING_DISTRIBUTIONS}.${R}"
+
     else
+
         printf '%b\n' \
             "${YELLOW}  ⚠ No se pudieron obtener las estadísticas de CloudFront.${R}"
     fi
 
-    # Información de ACM.
+    # ────────────────────────────────────────────────────────────
+    # INFORMACIÓN DE ACM
+    # ────────────────────────────────────────────────────────────
 
     if ((ACM_STATS_OK == 1)); then
+
         printf '%b\n' \
             "${GRAY}  ℹ Certificados = ACM emitidos en ${AWS_ACM_REGION}.${R}"
+
     else
+
         printf '%b\n' \
             "${YELLOW}  ⚠ No se pudieron consultar los certificados de ACM.${R}"
     fi
@@ -1001,9 +989,20 @@ dashboard_cards() {
 # ────────────────────────────────────────────────────────────────
 
 dashboard() {
+    # Recalcular dimensiones al actualizar el dashboard.
+    # Esto permite responder a cambios en el ancho de la terminal.
+    if ! init_dimensions; then
+        printf '%b\n' \
+            "${RED}✖ No se pudo inicializar el diseño del panel.${R}"
+
+        return 1
+    fi
+
+    # Actualizar las estadísticas de AWS.
     load_aws_statistics || true
 
     header
+
     status_bar
 
     section_title "RESUMEN DEL SISTEMA"
@@ -1072,10 +1071,12 @@ run_module() {
     local result
 
     tmp_file="$(mktemp 2>/dev/null)" || {
+
         printf '%b\n' \
             "${RED}✖ No se pudo crear un archivo temporal.${R}"
 
         pause
+
         return 1
     }
 
@@ -1098,26 +1099,31 @@ run_module() {
         rm -f -- "$tmp_file"
 
         pause
+
         return 1
     fi
 
     if [[ ! -s "$tmp_file" ]]; then
+
         printf '%b\n' \
             "${RED}✖ El módulo descargado está vacío.${R}"
 
         rm -f -- "$tmp_file"
 
         pause
+
         return 1
     fi
 
     if ! bash -n "$tmp_file"; then
+
         printf '%b\n' \
             "${RED}✖ El módulo contiene errores de sintaxis Bash.${R}"
 
         rm -f -- "$tmp_file"
 
         pause
+
         return 1
     fi
 
@@ -1127,11 +1133,13 @@ run_module() {
     printf '\n'
 
     bash "$tmp_file"
+
     result=$?
 
     rm -f -- "$tmp_file"
 
     if ((result != 0)); then
+
         printf '\n%b\n' \
             "${YELLOW}⚠ El módulo terminó con código ${result}.${R}"
     fi
@@ -1166,15 +1174,19 @@ uninstall_manager() {
         confirm
 
     case "$confirm" in
+
         s|S|si|SI|Si|sí|Sí|SÍ)
 
             if rm -f -- "$BIN_PATH"; then
+
                 printf '\n%b\n' \
                     "${GREEN}✔ Comando aws-manager eliminado.${R}"
 
                 printf '%b\n' \
                     "${GRAY}Los recursos de AWS permanecen intactos.${R}"
+
             else
+
                 printf '\n%b\n' \
                     "${RED}✖ No se pudo eliminar el comando.${R}"
 
@@ -1185,6 +1197,7 @@ uninstall_manager() {
             ;;
 
         *)
+
             printf '\n%b\n' \
                 "${GRAY}Desinstalación cancelada.${R}"
 
@@ -1201,18 +1214,28 @@ main() {
     local option
     local confirm
 
-    if ! validate_dimensions; then
-        exit 1
+    if ! check_dependencies; then
+        return 1
     fi
 
-    if ! check_dependencies; then
-        exit 1
+    # Inicializar las dimensiones antes de dibujar el dashboard.
+    if ! init_dimensions; then
+        return 1
     fi
 
     while true; do
-        dashboard
+
+        dashboard || {
+            printf '\n%b\n' \
+                "${RED}✖ No se pudo actualizar el dashboard.${R}"
+
+            pause
+
+            continue
+        }
 
         if ! read -r option; then
+
             printf '\n%b\n' \
                 "${GRAY}Entrada cerrada. Saliendo.${R}"
 
@@ -1238,6 +1261,7 @@ main() {
                 ;;
 
             5)
+
                 printf '\n%b\n' \
                     "${RED}${B}⚠ ATENCIÓN: ELIMINAR DISTRIBUCIÓN${R}"
 
@@ -1246,11 +1270,14 @@ main() {
                     confirm
 
                 case "$confirm" in
+
                     s|S|si|SI|Si|sí|Sí|SÍ)
+
                         run_module "delete-distribution.sh"
                         ;;
 
                     *)
+
                         printf '%b\n' \
                             "${GRAY}Operación cancelada.${R}"
 
@@ -1268,6 +1295,7 @@ main() {
                 ;;
 
             8)
+
                 printf '\n'
 
                 box_top "$CYAN"
@@ -1286,6 +1314,7 @@ main() {
                 ;;
 
             *)
+
                 printf '\n%b\n' \
                     "${RED}✖ Opción inválida. Selecciona del 1 al 8.${R}"
 
